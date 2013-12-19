@@ -19,6 +19,7 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.SmartList;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.api.CanceledStatus;
 import org.jetbrains.jps.builders.java.JavaSourceTransformer;
 import org.jetbrains.jps.cmdline.ClasspathBootstrap;
@@ -31,6 +32,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author Eugene Zhuravlev
@@ -328,9 +330,12 @@ public class JavacMain {
 
   private static class ContextImpl implements JavacFileManager.Context {
     private final StandardJavaFileManager myStdManager;
+    @Nullable
+    private final Method myCacheClearMethod;
     private final DiagnosticOutputConsumer myOutConsumer;
     private final OutputFileConsumer myOutputFileSink;
     private final CanceledStatus myCanceledStatus;
+    private static final AtomicBoolean ourOptimizedManagerMissingReported = new AtomicBoolean(false);
 
     public ContextImpl(@NotNull JavaCompiler compiler,
                        @NotNull DiagnosticOutputConsumer outConsumer,
@@ -339,7 +344,8 @@ public class JavacMain {
       myOutConsumer = outConsumer;
       myOutputFileSink = sink;
       myCanceledStatus = canceledStatus;
-      StandardJavaFileManager stdManager = null;
+      StandardJavaFileManager optimizedManager = null;
+      Method cacheClearMethod = null;
       if (canUseOptimizedmanager) {
         final Class<StandardJavaFileManager> optimizedManagerClass = ClasspathBootstrap.getOptimizedFileManagerClass();
         if (optimizedManagerClass != null) {
@@ -348,27 +354,37 @@ public class JavacMain {
             // if optimizedManagerClass is loaded by another classloader, cls.newInstance() will not work
             // that's why we need to call setAccessible() to ensure access
             constructor.setAccessible(true); 
-            stdManager = constructor.newInstance();
+            optimizedManager = constructor.newInstance();
+            cacheClearMethod = ClasspathBootstrap.getOptimizedFileManagerCacheClearMethod();
           }
           catch (Throwable e) {
             if (SystemInfo.isWindows) {
-              outConsumer.report(new PlainMessageDiagnostic(Diagnostic.Kind.OTHER, "JPS build failed to load optimized file manager for javac: " + e.getMessage()));
+              reportMissingOptimizedManager(outConsumer, e.getMessage());
             }
           }
         }
         else {
-          String error = ClasspathBootstrap.getOptimizedFileManagerLoadError();
-          if (error == null) {
-            error = "";
-          }
-          outConsumer.report(new PlainMessageDiagnostic(Diagnostic.Kind.OTHER, "JPS build failed to load optimized file manager for javac:\n" + error));
+          reportMissingOptimizedManager(outConsumer, null);
         }
       }
-      if (stdManager != null) {
-        myStdManager = stdManager;
+      myCacheClearMethod = cacheClearMethod;
+      if (optimizedManager != null) {
+        myStdManager = optimizedManager;
       }
       else {
         myStdManager = compiler.getStandardFileManager(outConsumer, Locale.US, null);
+      }
+    }
+
+    private static void reportMissingOptimizedManager(DiagnosticOutputConsumer outConsumer, String message) {
+      if (!ourOptimizedManagerMissingReported.getAndSet(true)) {
+        if (message == null) {
+          message = ClasspathBootstrap.getOptimizedFileManagerLoadError();
+          if (message == null) {
+            message = "";
+          }
+        }
+        outConsumer.report(new PlainMessageDiagnostic(Diagnostic.Kind.OTHER, "JPS build failed to load optimized file manager for javac:\n" + message));
       }
     }
 
@@ -385,7 +401,21 @@ public class JavacMain {
     }
 
     public void consumeOutputFile(@NotNull final OutputFileObject cls) {
-      myOutputFileSink.save(cls);
+      try {
+        myOutputFileSink.save(cls);
+      }
+      finally {
+        final Method cacheClearMethod = myCacheClearMethod;
+        if (cacheClearMethod != null) {
+          try {
+            cacheClearMethod.invoke(myStdManager, cls.getFile());
+          }
+          catch (Throwable e) {
+            //noinspection UseOfSystemOutOrSystemErr
+            e.printStackTrace(System.err);
+          }
+        }
+      }
     }
   }
 

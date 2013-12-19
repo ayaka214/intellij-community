@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2009 JetBrains s.r.o.
+ * Copyright 2000-2013 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -174,20 +174,18 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
     doSetValue(s, getPolicy());
   }
 
-  public void doSetValue(final String s, XmlPsiPolicy policy) throws IncorrectOperationException {
-    final ASTNode firstEncodedElement = policy.encodeXmlTextContents(s, this);
-
-    if (firstEncodedElement == null) {
-      delete();
-      return;
-    }
-
+  public void doSetValue(final String s, final XmlPsiPolicy policy) throws IncorrectOperationException {
     final PomModel model = PomManager.getModel(getProject());
     final XmlAspect aspect = model.getModelAspect(XmlAspect.class);
     model.runTransaction(new PomTransactionBase(this, aspect) {
       public PomModelEvent runInner() {
         final String oldText = getText();
-        replaceAllChildrenToChildrenOf(firstEncodedElement.getTreeParent());
+        final ASTNode firstEncodedElement = policy.encodeXmlTextContents(s, XmlTextImpl.this);
+        if (firstEncodedElement == null) {
+          delete();
+        } else {
+          replaceAllChildrenToChildrenOf(firstEncodedElement.getTreeParent());
+        }
         clearCaches();
         return XmlTextChangedImpl.createXmlTextChanged(model, XmlTextImpl.this, oldText);
       }
@@ -227,7 +225,7 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
   }
 
   public void insertText(String text, int displayOffset) throws IncorrectOperationException {
-    if (text == null || text.length() == 0) return;
+    if (text == null || text.isEmpty()) return;
 
     final int physicalOffset = displayToPhysical(displayOffset);
     final PsiElement psiElement = findElementAt(physicalOffset);
@@ -296,7 +294,7 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
             public PomModelEvent runInner() throws IncorrectOperationException {
               final String oldText = getText();
 
-              if (newElementText.length() > 0) {
+              if (!newElementText.isEmpty()) {
                 final ASTNode e =
                   getPolicy().encodeXmlTextContents(newElementText, XmlTextImpl.this);
                 replaceChild(psiElement.getNode(), e);

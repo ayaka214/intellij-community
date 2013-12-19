@@ -226,14 +226,14 @@ public class DataFlowRunner {
         }
       }
     }
+    else if (instruction instanceof LambdaInstruction) {
+      PsiLambdaExpression lambdaExpression = ((LambdaInstruction)instruction).getLambdaExpression();
+      registerNestedClosures(instructionState, lambdaExpression);
+    }
     else if (instruction instanceof EmptyInstruction) {
       PsiElement anchor = ((EmptyInstruction)instruction).getAnchor();
-      if (anchor instanceof PsiDeclarationStatement) {
-        for (PsiElement element : ((PsiDeclarationStatement)anchor).getDeclaredElements()) {
-          if (element instanceof PsiClass) {
-            registerNestedClosures(instructionState, (PsiClass)element);
-          }
-        }
+      if (anchor instanceof PsiClass) {
+        registerNestedClosures(instructionState, (PsiClass)anchor);
       }
     }
 
@@ -253,6 +253,14 @@ public class DataFlowRunner {
     }
     for (PsiField field : nestedClass.getFields()) {
       myNestedClosures.putValue(field, createClosureState(state));
+    }
+  }
+  
+  private void registerNestedClosures(DfaInstructionState instructionState, PsiLambdaExpression expr) {
+    DfaMemoryState state = instructionState.getMemoryState();
+    PsiElement body = expr.getBody();
+    if (body != null) {
+      myNestedClosures.putValue(body, createClosureState(state));
     }
   }
 

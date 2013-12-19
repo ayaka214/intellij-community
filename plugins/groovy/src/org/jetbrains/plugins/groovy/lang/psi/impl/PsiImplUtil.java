@@ -95,6 +95,8 @@ import static com.intellij.psi.impl.source.tree.Factory.createSingleLeafElement;
 import static org.jetbrains.plugins.groovy.lang.lexer.GroovyTokenTypes.*;
 import static org.jetbrains.plugins.groovy.lang.lexer.TokenSets.RELATIONS;
 import static org.jetbrains.plugins.groovy.lang.lexer.TokenSets.SHIFT_SIGNS;
+import static org.jetbrains.plugins.groovy.lang.psi.util.GroovyCommonClassNames.GROOVY_LANG_IMMUTABLE;
+import static org.jetbrains.plugins.groovy.lang.psi.util.GroovyCommonClassNames.GROOVY_TRANSFORM_IMMUTABLE;
 
 public class PsiImplUtil {
   private static final Logger LOG = Logger.getInstance("org.jetbrains.plugins.groovy.lang.psi.impl.PsiImplUtil");
@@ -580,7 +582,7 @@ public class PsiImplUtil {
     if (block == null) return null;
 
     final SoftReference<PsiCodeBlock> ref = block.getUserData(PSI_CODE_BLOCK);
-    final PsiCodeBlock body = ref == null ? null : ref.get();
+    final PsiCodeBlock body = SoftReference.dereference(ref);
     if (body != null) return body;
     final GrSyntheticCodeBlock newBody = new GrSyntheticCodeBlock(block);
     block.putUserData(PSI_CODE_BLOCK, new SoftReference<PsiCodeBlock>(newBody));
@@ -591,7 +593,7 @@ public class PsiImplUtil {
     if (typeElement == null) return null;
 
     final SoftReference<PsiTypeElement> ref = typeElement.getUserData(PSI_TYPE_ELEMENT);
-    final PsiTypeElement element = ref == null ? null : ref.get();
+    final PsiTypeElement element = SoftReference.dereference(ref);
     if (element != null) return element;
     final GrSyntheticTypeElement newTypeElement = new GrSyntheticTypeElement(typeElement);
     typeElement.putUserData(PSI_TYPE_ELEMENT, new SoftReference<PsiTypeElement>(newTypeElement));
@@ -602,7 +604,7 @@ public class PsiImplUtil {
     if (expr == null) return null;
 
     final SoftReference<PsiExpression> ref = expr.getUserData(PSI_EXPRESSION);
-    final PsiExpression element = ref == null ? null : ref.get();
+    final PsiExpression element = SoftReference.dereference(ref);
     if (element != null) return element;
     final GrSyntheticExpression newExpr = new GrSyntheticExpression(expr);
     expr.putUserData(PSI_EXPRESSION, new SoftReference<PsiExpression>(newExpr));
@@ -613,7 +615,7 @@ public class PsiImplUtil {
     if (list == null) return null;
 
     final SoftReference<PsiReferenceList> ref = list.getUserData(PSI_REFERENCE_LIST);
-    final PsiReferenceList element = ref == null ? null : ref.get();
+    final PsiReferenceList element = SoftReference.dereference(ref);
     if (element != null) return element;
     final GrSyntheticReferenceList newList = new GrSyntheticReferenceList(list, role);
     list.putUserData(PSI_REFERENCE_LIST, new SoftReference<PsiReferenceList>(newList));
@@ -841,5 +843,10 @@ public class PsiImplUtil {
     }
 
     return null;
+  }
+
+  public static boolean hasImmutableAnnotation(PsiModifierList modifierList) {
+    return modifierList.findAnnotation(GROOVY_LANG_IMMUTABLE) != null ||
+           modifierList.findAnnotation(GROOVY_TRANSFORM_IMMUTABLE) != null;
   }
 }

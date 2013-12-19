@@ -20,8 +20,6 @@ import org.jetbrains.annotations.NotNull;
 import org.tmatesoft.svn.core.SVNException;
 import org.tmatesoft.svn.core.SVNURL;
 
-import java.util.List;
-
 /**
  * @author Konstantin Kolosovsky.
  */
@@ -29,6 +27,7 @@ public class CertificateCallbackCase extends AuthCallbackCase {
 
   private static final String CERTIFICATE_ERROR = "Error validating server certificate for";
   private static final String UNTRUSTED_SERVER_CERTIFICATE = "Server SSL certificate untrusted";
+  private static final String CERTIFICATE_VERIFICATION_FAILED = "certificate verification failed";
 
   private boolean accepted;
 
@@ -40,7 +39,9 @@ public class CertificateCallbackCase extends AuthCallbackCase {
   public boolean canHandle(String error) {
     return error.startsWith(CERTIFICATE_ERROR) ||
            // https one-way protocol untrusted server certificate
-           error.contains(UNTRUSTED_SERVER_CERTIFICATE);
+           error.contains(UNTRUSTED_SERVER_CERTIFICATE) ||
+           // for instance, certificate issued for a different hostname, issuer is not trusted - for both 1.7 and 1.8
+           error.contains(CERTIFICATE_VERIFICATION_FAILED);
   }
 
   @Override
@@ -77,11 +78,11 @@ public class CertificateCallbackCase extends AuthCallbackCase {
   }
 
   @Override
-  public void updateParameters(List<String> parameters) {
+  public void updateParameters(@NotNull Command command) {
     if (accepted) {
-      parameters.add("--trust-server-cert");
+      command.put("--trust-server-cert");
       // force --non-interactive as it is required by --trust-server-cert, but --non-interactive is not default mode for 1.7 or earlier
-      parameters.add("--non-interactive");
+      command.put("--non-interactive");
     }
   }
 

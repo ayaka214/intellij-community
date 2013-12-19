@@ -18,6 +18,7 @@ package com.intellij.psi.impl.source.resolve.graphInference;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.source.resolve.graphInference.constraints.TypeEqualityConstraint;
+import com.intellij.psi.util.TypeConversionUtil;
 import org.jetbrains.annotations.Nullable;
 
 public class FunctionalInterfaceParameterizationUtil {
@@ -38,7 +39,6 @@ public class FunctionalInterfaceParameterizationUtil {
       }
       return false;
     }
-    LOG.error("Unexpected type: " + classType);
     return false;
   }
 
@@ -84,6 +84,9 @@ public class FunctionalInterfaceParameterizationUtil {
 
       final PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(psiClass.getProject());
       final PsiParameter[] targetMethodParams = interfaceMethod.getParameterList().getParameters();
+      if (targetMethodParams.length != lambdaParams.length) {
+        return null;
+      }
       for (int i = 0; i < targetMethodParams.length; i++) {
         if (resolve) {
           session.addConstraint(new TypeEqualityConstraint(lambdaParams[i].getType(), targetMethodParams[i].getType()));
@@ -91,7 +94,7 @@ public class FunctionalInterfaceParameterizationUtil {
       }
 
       final PsiClassType parameterization = elementFactory.createType(psiClass, session.infer());
-      if (!isWildcardParameterized(parameterization)) return parameterization;
+      if (!TypeConversionUtil.containsWildcards(parameterization)) return parameterization;
     }
     return null;
   }

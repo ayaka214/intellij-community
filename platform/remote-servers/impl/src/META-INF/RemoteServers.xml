@@ -3,6 +3,9 @@
     <extensionPoint name="remoteServer.type" interface="com.intellij.remoteServer.ServerType"/>
     <extensionPoint name="remoteServer.deploymentSource.type" interface="com.intellij.remoteServer.configuration.deployment.DeploymentSourceType"/>
     <extensionPoint name="remoteServer.viewContributor" interface="com.intellij.remoteServer.impl.runtime.ui.RemoteServersViewContributor"/>
+
+    <extensionPoint name="remoteServer.util.CloudDeploymentRuntimeProvider"
+                    interface="com.intellij.remoteServer.util.CloudDeploymentRuntimeProvider"/>
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
@@ -36,7 +39,7 @@
       <action id="RemoteServers.RunServer" class="com.intellij.remoteServer.impl.runtime.ui.tree.actions.RunServerAction"/>
       <action id="RemoteServers.DebugServer" class="com.intellij.remoteServer.impl.runtime.ui.tree.actions.DebugServerAction"/>
       <action id="RemoteServers.StopServer" class="com.intellij.remoteServer.impl.runtime.ui.tree.actions.StopServerAction"/>
-      <action id="RemoteServers.EditServer" class="com.intellij.remoteServer.impl.runtime.ui.tree.actions.EditServerConfigAction"/>
+      <action id="RemoteServers.EditServer" class="com.intellij.remoteServer.impl.runtime.ui.tree.actions.EditConfigurationAction"/>
       <separator/>
       <action id="RemoteServers.DeployAll" class="com.intellij.remoteServer.impl.runtime.ui.tree.actions.DeployAllAction"/>
     </group>

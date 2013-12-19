@@ -17,6 +17,7 @@ package com.siyeh.ig.bugs;
 
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
+import com.intellij.psi.util.PsiUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
@@ -31,15 +32,19 @@ public class VariableNotUsedInsideIfInspection extends BaseInspection {
   @Nls
   @NotNull
   public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "variable.not.used.inside.if.display.name");
+    return InspectionGadgetsBundle.message("variable.not.used.inside.if.display.name");
   }
 
   @Override
   @NotNull
   protected String buildErrorString(Object... infos) {
-    return InspectionGadgetsBundle.message(
-      "variable.not.used.inside.if.problem.descriptor");
+    final boolean isIf = ((Boolean)infos[0]).booleanValue();
+    if (isIf) {
+      return InspectionGadgetsBundle.message("variable.not.used.inside.if.problem.descriptor");
+    }
+    else {
+      return InspectionGadgetsBundle.message("variable.not.used.inside.conditional.problem.descriptor");
+    }
   }
 
   @Override
@@ -52,7 +57,7 @@ public class VariableNotUsedInsideIfInspection extends BaseInspection {
     @Override
     public void visitConditionalExpression(PsiConditionalExpression expression) {
       super.visitConditionalExpression(expression);
-      final PsiExpression condition = expression.getCondition();
+      final PsiExpression condition = PsiUtil.skipParenthesizedExprDown(expression.getCondition());
       if (!(condition instanceof PsiBinaryExpression)) {
         return;
       }
@@ -63,10 +68,14 @@ public class VariableNotUsedInsideIfInspection extends BaseInspection {
       }
       final IElementType tokenType = binaryExpression.getOperationTokenType();
       if (tokenType == JavaTokenType.EQEQ) {
-        checkVariableUsage(referenceExpression, expression.getThenExpression(), expression.getElseExpression());
+        if (checkVariableUsage(referenceExpression, expression.getThenExpression(), expression.getElseExpression())) {
+          registerError(referenceExpression, Boolean.FALSE);
+        }
       }
       else if (tokenType == JavaTokenType.NE) {
-        checkVariableUsage(referenceExpression, expression.getElseExpression(), expression.getThenExpression());
+        if (checkVariableUsage(referenceExpression, expression.getElseExpression(), expression.getThenExpression())) {
+          registerError(referenceExpression, Boolean.FALSE);
+        }
       }
     }
 
@@ -84,29 +93,30 @@ public class VariableNotUsedInsideIfInspection extends BaseInspection {
       }
       final IElementType tokenType = binaryExpression.getOperationTokenType();
       if (tokenType == JavaTokenType.EQEQ) {
-        checkVariableUsage(referenceExpression, statement.getThenBranch(), statement.getElseBranch());
+        if (checkVariableUsage(referenceExpression, statement.getThenBranch(), statement.getElseBranch())) {
+          registerError(referenceExpression, Boolean.TRUE);
+        }
       }
       else if (tokenType == JavaTokenType.NE) {
-        checkVariableUsage(referenceExpression, statement.getElseBranch(), statement.getThenBranch());
+        if (checkVariableUsage(referenceExpression, statement.getElseBranch(), statement.getThenBranch())) {
+          registerError(referenceExpression, Boolean.TRUE);
+        }
       }
     }
 
-    private void checkVariableUsage(PsiReferenceExpression referenceExpression, PsiElement thenContext, PsiElement elseContext) {
-      if (thenContext == null) {
-        return;
-      }
+    private boolean checkVariableUsage(PsiReferenceExpression referenceExpression, PsiElement thenContext, PsiElement elseContext) {
       final PsiElement target = referenceExpression.resolve();
       if (!(target instanceof PsiVariable)) {
-        return;
+        return false;
       }
       final PsiVariable variable = (PsiVariable)target;
-      if (contextExits(thenContext) || VariableAccessUtils.variableIsAssigned(variable, thenContext)) {
-        return;
+      if (thenContext != null && (contextExits(thenContext) || VariableAccessUtils.variableIsAssigned(variable, thenContext))) {
+        return false;
       }
-      if (elseContext != null && (contextExits(elseContext) || VariableAccessUtils.variableIsUsed(variable, elseContext))) {
-        return;
+      if (elseContext == null || VariableAccessUtils.variableIsUsed(variable, elseContext)) {
+        return false;
       }
-      registerError(referenceExpression);
+      return true;
     }
 
     private static PsiReferenceExpression extractVariableReference(PsiBinaryExpression expression) {

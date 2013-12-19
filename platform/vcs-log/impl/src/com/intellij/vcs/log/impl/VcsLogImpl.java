@@ -15,17 +15,17 @@
  */
 package com.intellij.vcs.log.impl;
 
+import com.intellij.openapi.util.Condition;
+import com.intellij.ui.table.JBTable;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.vcs.log.Hash;
-import com.intellij.vcs.log.VcsFullCommitDetails;
-import com.intellij.vcs.log.VcsLog;
-import com.intellij.vcs.log.data.LoadingDetails;
+import com.intellij.vcs.log.*;
 import com.intellij.vcs.log.data.VcsLogDataHolder;
-import com.intellij.vcs.log.graph.elements.Node;
 import com.intellij.vcs.log.ui.VcsLogUI;
+import com.intellij.vcs.log.ui.tables.AbstractVcsLogTableModel;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.awt.*;
 import java.util.Collection;
 import java.util.List;
 
@@ -34,25 +34,48 @@ import java.util.List;
  */
 public class VcsLogImpl implements VcsLog {
 
-  private final VcsLogDataHolder myDataHolder;
-  private final VcsLogUI myUi;
+  @NotNull private final VcsLogDataHolder myDataHolder;
+  @NotNull private final VcsLogUI myUi;
 
-  public VcsLogImpl(VcsLogManager vcsLogManager) {
-    myDataHolder = vcsLogManager.getDataHolder();
-    myUi = vcsLogManager.getLogUi();
+  public VcsLogImpl(@NotNull VcsLogDataHolder holder, @NotNull VcsLogUI ui) {
+    myDataHolder = holder;
+    myUi = ui;
+  }
+
+  @Override
+  @NotNull
+  public List<Hash> getSelectedCommits() {
+    List<Hash> hashes = ContainerUtil.newArrayList();
+    JBTable table = myUi.getTable();
+    for (int row : table.getSelectedRows()) {
+      Hash hash = ((AbstractVcsLogTableModel)table.getModel()).getHashAtRow(row);
+      if (hash != null) {
+        hashes.add(hash);
+      }
+    }
+    return hashes;
   }
 
   @NotNull
   @Override
-  public List<VcsFullCommitDetails> getSelectedCommits() {
-    List<VcsFullCommitDetails> selectedDetails = ContainerUtil.newArrayList();
-    for (int row : myUi.getTable().getSelectedRows()) {
-      VcsFullCommitDetails data = getDetailsAtRow(row);
-      if (data != null) {
-        selectedDetails.add(data);
+  public List<VcsFullCommitDetails> getSelectedDetails() {
+    List<VcsFullCommitDetails> details = ContainerUtil.newArrayList();
+    JBTable table = myUi.getTable();
+    for (int row : table.getSelectedRows()) {
+      AbstractVcsLogTableModel model = (AbstractVcsLogTableModel)table.getModel();
+      VcsFullCommitDetails commitDetails = model.getFullCommitDetails(row);
+      if (commitDetails == null) {
+        return ContainerUtil.emptyList();
       }
+      details.add(commitDetails);
     }
-    return selectedDetails;
+    return details;
+  }
+
+  @Override
+  @Nullable
+  public VcsFullCommitDetails getDetailsIfAvailable(@NotNull final Hash hash) {
+    return myDataHolder.getCommitDetailsGetter().getCommitDataIfAvailable(hash);
   }
 
   @Nullable
@@ -61,14 +84,39 @@ public class VcsLogImpl implements VcsLog {
     return null;
   }
 
-  @Nullable
-  private VcsFullCommitDetails getDetailsAtRow(int row) {
-    Node commitNode = myDataHolder.getDataPack().getGraphModel().getGraph().getCommitNodeInRow(row);
-    if (commitNode == null) {
-      return null;
+  @NotNull
+  @Override
+  public Collection<VcsRef> getAllReferences() {
+    return myDataHolder.getDataPack().getRefsModel().getAllRefs();
+  }
+
+  @Override
+  public void jumpToReference(final String reference) {
+    Collection<VcsRef> references = getAllReferences();
+    VcsRef ref = ContainerUtil.find(references, new Condition<VcsRef>() {
+      @Override
+      public boolean value(VcsRef ref) {
+        return ref.getName().startsWith(reference);
+      }
+    });
+    if (ref != null) {
+      myUi.jumpToCommit(ref.getCommitHash());
     }
-    VcsFullCommitDetails details = myDataHolder.getCommitDetailsGetter().getCommitData(commitNode);
-    return details instanceof LoadingDetails ? null : details;
+    else {
+      myUi.jumpToCommitByPartOfHash(reference);
+    }
+  }
+
+  @NotNull
+  @Override
+  public Component getToolbar() {
+    return myUi.getToolbar();
+  }
+
+  @NotNull
+  @Override
+  public Collection<VcsLogProvider> getLogProviders() {
+    return myDataHolder.getLogProviders();
   }
 
 }

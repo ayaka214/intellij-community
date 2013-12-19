@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2011 JetBrains s.r.o.
+ * Copyright 2000-2013 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -452,11 +452,8 @@ public class JavaClassReference extends GenericReference implements PsiJavaRefer
     Project project = getElement().getProject();
     GlobalSearchScope scope = myJavaClassReferenceSet.getProvider().getScope(project);
     if (scope == null) {
-      final Module module = ModuleUtilCore.findModuleForPsiElement(getElement());
-      if (module != null) {
-        return module.getModuleWithDependenciesAndLibrariesScope(true);
-      }
-      return GlobalSearchScope.allScope(project);
+      Module module = ModuleUtilCore.findModuleForPsiElement(getElement());
+      return module != null ? module.getModuleWithDependenciesAndLibrariesScope(true) : GlobalSearchScope.allScope(project);
     }
     return scope;
   }
@@ -518,7 +515,6 @@ public class JavaClassReference extends GenericReference implements PsiJavaRefer
     return list;
   }
 
-  @NotNull
   public void processSubclassVariants(@NotNull PsiPackage context, @NotNull String[] extendClasses, Consumer<LookupElement> result) {
     GlobalSearchScope packageScope = PackageScope.packageScope(context, true);
     GlobalSearchScope scope = myJavaClassReferenceSet.getProvider().getScope(getElement().getProject());

@@ -2,12 +2,13 @@ package com.intellij.tasks.jira.model.api20alpha1;
 
 import com.google.gson.reflect.TypeToken;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.tasks.TaskState;
 import com.intellij.tasks.jira.JiraRepository;
 import com.intellij.tasks.jira.JiraRestApi;
-import com.intellij.tasks.jira.JiraUtil;
 import com.intellij.tasks.jira.model.JiraIssue;
 import com.intellij.tasks.jira.model.JiraResponseWrapper;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -27,13 +28,13 @@ public class JiraRestApi20Alpha1 extends JiraRestApi {
 
   @Override
   protected JiraIssue parseIssue(String response) {
-    return JiraUtil.GSON.fromJson(response, JiraIssueApi20Alpha1.class);
+    return JiraRepository.GSON.fromJson(response, JiraIssueApi20Alpha1.class);
   }
 
   @NotNull
   @Override
   protected List<JiraIssue> parseIssues(String response) {
-    JiraResponseWrapper.Issues<JiraIssueApi20Alpha1> wrapper = JiraUtil.GSON.fromJson(response, ISSUES_WRAPPER_TYPE);
+    JiraResponseWrapper.Issues<JiraIssueApi20Alpha1> wrapper = JiraRepository.GSON.fromJson(response, ISSUES_WRAPPER_TYPE);
     List<JiraIssueApi20Alpha1> incompleteIssues = wrapper.getIssues();
     List<JiraIssue> updatedIssues = new ArrayList<JiraIssue>();
     for (JiraIssueApi20Alpha1 issue : incompleteIssues) {
@@ -45,6 +46,22 @@ public class JiraRestApi20Alpha1 extends JiraRestApi {
       }
     }
     return updatedIssues;
+  }
+
+  @Nullable
+  @Override
+  protected String getRequestForStateTransition(@NotNull TaskState state) {
+    switch (state) {
+      case IN_PROGRESS:
+        return  "{\"transition\": \"4\"}";
+      case RESOLVED:
+        // 5 for "Resolved", 2 for "Closed"
+        return  "{\"transition\": \"5\", \"resolution\": \"Fixed\"}";
+      case REOPENED:
+        return  "{\"transition\": \"3\"}";
+      default:
+        return null;
+    }
   }
 
   @NotNull

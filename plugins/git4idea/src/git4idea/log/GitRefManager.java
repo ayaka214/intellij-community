@@ -3,14 +3,20 @@ package git4idea.log;
 import com.intellij.dvcs.repo.RepositoryManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Condition;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.JBColor;
 import com.intellij.util.Function;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.MultiMap;
 import com.intellij.vcs.log.RefGroup;
 import com.intellij.vcs.log.VcsLogRefManager;
 import com.intellij.vcs.log.VcsRef;
 import com.intellij.vcs.log.VcsRefType;
+import com.intellij.vcs.log.impl.SingletonRefGroup;
+import git4idea.GitBranch;
+import git4idea.GitRemoteBranch;
 import git4idea.repo.GitBranchTrackInfo;
+import git4idea.repo.GitRemote;
 import git4idea.repo.GitRepository;
 import org.jetbrains.annotations.NotNull;
 
@@ -124,25 +130,111 @@ public class GitRefManager implements VcsLogRefManager {
   @NotNull
   @Override
   public List<RefGroup> group(Collection<VcsRef> refs) {
-    // TODO group non-tracking refs into remotes
-    return ContainerUtil.map(sort(refs), new Function<VcsRef, RefGroup>() {
-      @Override
-      public RefGroup fun(final VcsRef ref) {
-        return new RefGroup() {
-          @NotNull
-          @Override
-          public String getName() {
-            return ref.getName();
-          }
+    List<RefGroup> simpleGroups = ContainerUtil.newArrayList();
+    List<VcsRef> localBranches = ContainerUtil.newArrayList();
+    List<VcsRef> trackedBranches = ContainerUtil.newArrayList();
+    MultiMap<GitRemote, VcsRef> remoteRefGroups = MultiMap.create();
 
-          @NotNull
-          @Override
-          public List<VcsRef> getRefs() {
-            return Collections.singletonList(ref);
-          }
-        };
+    MultiMap<VirtualFile, VcsRef> refsByRoot = groupRefsByRoot(refs);
+    for (Map.Entry<VirtualFile, Collection<VcsRef>> entry : refsByRoot.entrySet()) {
+      VirtualFile root = entry.getKey();
+      Collection<VcsRef> refsInRoot = entry.getValue();
+
+      GitRepository repository = myRepositoryManager.getRepositoryForRoot(root);
+      if (repository == null) {
+        LOG.warn("No repository for root: " + root);
+        continue;
+      }
+
+      Set<String> locals = getLocalBranches(repository);
+      Set<String> tracked = getTrackedRemoteBranches(repository);
+      Map<String, GitRemote> nonTracked = getNonTrackedRemoteBranches(repository);
+
+      for (VcsRef ref : refsInRoot) {
+        if (ref.getType() == HEAD) {
+          simpleGroups.add(new SingletonRefGroup(ref));
+          continue;
+        }
+
+        String refName = ref.getName();
+        if (locals.contains(refName)) {
+          localBranches.add(ref);
+        }
+        else if (tracked.contains(refName)) {
+          trackedBranches.add(ref);
+        }
+        else if (nonTracked.containsKey(refName)) {
+          remoteRefGroups.putValue(nonTracked.get(refName), ref);
+        }
+        else {
+          LOG.warn("Didn't find ref neither in local nor in remote branches: " + ref);
+        }
+      }
+    }
+
+    List<RefGroup> result = ContainerUtil.newArrayList();
+    result.addAll(simpleGroups);
+    result.add(new LogicalRefGroup("Local", localBranches));
+    result.add(new LogicalRefGroup("Tracked", trackedBranches));
+    for (Map.Entry<GitRemote, Collection<VcsRef>> entry : remoteRefGroups.entrySet()) {
+      final GitRemote remote = entry.getKey();
+      final Collection<VcsRef> branches = entry.getValue();
+      result.add(new RemoteRefGroup(remote, branches));
+    }
+    return result;
+  }
+
+  private static Set<String> getLocalBranches(GitRepository repository) {
+    return ContainerUtil.map2Set(repository.getBranches().getLocalBranches(), new Function<GitBranch, String>() {
+      @Override
+      public String fun(GitBranch branch) {
+        return branch.getName();
       }
     });
+  }
+
+  @NotNull
+  private static Set<String> getTrackedRemoteBranches(@NotNull GitRepository repository) {
+    Set<GitRemoteBranch> all = new HashSet<GitRemoteBranch>(repository.getBranches().getRemoteBranches());
+    Set<String> tracked = new HashSet<String>();
+    for (GitBranchTrackInfo info : repository.getBranchTrackInfos()) {
+      GitRemoteBranch trackedRemoteBranch = info.getRemoteBranch();
+      if (all.contains(trackedRemoteBranch)) { // check that this branch really exists, not just written in .git/config
+        tracked.add(trackedRemoteBranch.getName());
+      }
+    }
+    return tracked;
+  }
+
+  @NotNull
+  private static Map<String, GitRemote> getNonTrackedRemoteBranches(@NotNull GitRepository repository) {
+    Set<GitRemoteBranch> all = new HashSet<GitRemoteBranch>(repository.getBranches().getRemoteBranches());
+    Set<String> tracked = getTrackedRemoteBranchesFromConfig(repository);
+    Map<String, GitRemote> nonTracked = ContainerUtil.newHashMap();
+    for (GitRemoteBranch remoteBranch : all) {
+      if (!tracked.contains(remoteBranch.getName())) {
+        nonTracked.put(remoteBranch.getName(), remoteBranch.getRemote());
+      }
+    }
+    return nonTracked;
+  }
+
+  private static Set<String> getTrackedRemoteBranchesFromConfig(GitRepository repository) {
+    return ContainerUtil.map2Set(repository.getBranchTrackInfos(), new Function<GitBranchTrackInfo, String>() {
+      @Override
+      public String fun(GitBranchTrackInfo trackInfo) {
+        return trackInfo.getRemoteBranch().getName();
+      }
+    });
+  }
+
+  @NotNull
+  private static MultiMap<VirtualFile, VcsRef> groupRefsByRoot(@NotNull Iterable<VcsRef> refs) {
+    MultiMap<VirtualFile, VcsRef> grouped = MultiMap.create();
+    for (VcsRef ref : refs) {
+      grouped.putValue(ref.getRoot(), ref);
+    }
+    return grouped;
   }
 
   private static class SimpleRefType implements VcsRefType {
@@ -166,4 +258,70 @@ public class GitRefManager implements VcsLogRefManager {
     }
   }
 
+  private static class LogicalRefGroup implements RefGroup {
+    private final String myGroupName;
+    private final List<VcsRef> myRefs;
+
+    private LogicalRefGroup(String groupName, List<VcsRef> refs) {
+      myGroupName = groupName;
+      myRefs = refs;
+    }
+
+    @Override
+    public boolean isExpanded() {
+      return true;
+    }
+
+    @NotNull
+    @Override
+    public String getName() {
+      return myGroupName;
+    }
+
+    @NotNull
+    @Override
+    public List<VcsRef> getRefs() {
+      return myRefs;
+    }
+
+    @NotNull
+    @Override
+    public Color getBgColor() {
+      return HEAD_COLOR;
+    }
+  }
+
+  private class RemoteRefGroup implements RefGroup {
+    private final GitRemote myRemote;
+    private final Collection<VcsRef> myBranches;
+
+    public RemoteRefGroup(GitRemote remote, Collection<VcsRef> branches) {
+      myRemote = remote;
+      myBranches = branches;
+    }
+
+    @Override
+    public boolean isExpanded() {
+      return false;
+    }
+
+    @NotNull
+    @Override
+    public String getName() {
+      return myRemote.getName() + "/...";
+    }
+
+    @NotNull
+    @Override
+    public List<VcsRef> getRefs() {
+      return sort(myBranches);
+    }
+
+    @NotNull
+    @Override
+    public Color getBgColor() {
+      return REMOTE_BRANCH_COLOR;
+    }
+
+  }
 }

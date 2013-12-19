@@ -26,6 +26,7 @@ package com.intellij.codeInspection.dataFlow;
 
 import com.intellij.codeInspection.dataFlow.value.*;
 import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.UnorderedPair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.JavaTokenType;
@@ -101,7 +102,11 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
     return myUnknownVariables.equals(that.myUnknownVariables);
   }
 
-  boolean equalsSuperficially(DfaMemoryStateImpl other) {
+  Object getSuperficialKey() {
+    return Pair.create(myEphemeral, myStack);
+  }
+
+  private boolean equalsSuperficially(DfaMemoryStateImpl other) {
     return myEphemeral == other.myEphemeral && myStack.equals(other.myStack);
   }
 
@@ -263,6 +268,11 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
     myEqClasses.add(aClass);
 
     return myEqClasses.size() - 1;
+  }
+
+  boolean areEquivalent(DfaValue val1, DfaValue val2) {
+    int index = getEqClassIndex(val1);
+    return index >= 0 && index == getEqClassIndex(val2);
   }
 
   @NotNull

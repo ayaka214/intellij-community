@@ -576,18 +576,77 @@ int method(x, y, z) {
 ''')
   }
 
-  void testReassignedVarInClosure() {
+  void testReassignedVarInClosure1() {
     addCompileStatic()
     testHighlighting("""
 $IMPORT_COMPILE_STATIC
 
 @CompileStatic
-test() {
+def test() {
     def var = "abc"
     def cl = {
         var = new Date()
     }
     cl()
+    var.<error descr="Cannot resolve symbol 'toUpperCase'">toUpperCase</error>()
+}
+""", GrUnresolvedAccessInspection)
+  }
+
+  void testReassignedVarInClosure2() {
+    addCompileStatic()
+    testHighlighting("""
+$IMPORT_COMPILE_STATIC
+
+@CompileStatic
+def test() {
+    def cl = {
+        def var
+        var = new Date()
+    }
+    def var = "abc"
+
+    cl()
+    var.toUpperCase()  //no errors
+}
+""", GrUnresolvedAccessInspection)
+  }
+
+  void testReassignedVarInClosure3() {
+    addCompileStatic()
+    testHighlighting("""
+$IMPORT_COMPILE_STATIC
+
+@CompileStatic
+def test() {
+    def var = "abc"
+    def cl = new Closure(this, this){
+      def call() {
+        var = new Date()
+      }
+    }
+    cl()
+    var.toUpperCase() //no errors
+}
+""", GrUnresolvedAccessInspection)
+  }
+
+  void testReassignedVarInClosure4() {
+    addCompileStatic()
+    testHighlighting("""
+$IMPORT_COMPILE_STATIC
+
+class X {
+  def var
+}
+
+@CompileStatic
+def test() {
+    def var = "abc"
+    new X().with {
+        var = new Date()
+    }
+
     var.<error descr="Cannot resolve symbol 'toUpperCase'">toUpperCase</error>()
 }
 """, GrUnresolvedAccessInspection)
@@ -1645,6 +1704,89 @@ class E {
   <error>private foo()</error>{}
   <error>def foo(int x)</error> {}
 }
+
+class Z {
+ private Z() {}   //correct
+ private Z(x) {}  //correct
+}
 ''')
   }
+
+  void testImmutable() {
+    testHighlighting('''\
+import groovy.transform.Immutable
+
+@Immutable
+class A {
+  String immutable
+  private String mutable
+
+  def foo() {
+    <error descr="Cannot assign a value to final field 'immutable'">immutable</error> = 5
+    mutable = 5
+
+  }
+}
+''')
+  }
+
+  void testConstructorInImmutable() {
+    testHighlighting('''\
+import groovy.transform.Immutable
+
+@Immutable
+class A {
+  String immutable
+  private String mutable
+
+  def <error descr="Explicit constructors are not allowed for @Immutable class">A</error>() {}
+}
+''')
+  }
+
+  void testGetterInImmutable() {
+    testHighlighting('''\
+import groovy.transform.Immutable
+
+@Immutable
+class A {
+  String immutable
+  private String mutable
+
+  String <error descr="Repetitive method name 'getImmutable'">getImmutable</error>() {immutable}
+  String getMutable() {mutable}
+}
+''')
+  }
+
+  void testGetterInImmutable2() {
+    testHighlighting('''\
+import groovy.transform.Immutable
+
+@Immutable
+class A {
+  String immutable
+
+  int <error descr="Repetitive method name 'getImmutable'">getImmutable</error>() {1}
+}
+''')
+  }
+
+  void testMinusInAnnotationArg() {
+    testHighlighting('''\
+@interface Xx {
+    int value()
+}
+
+@Xx(-1)
+public class Bar1 { }
+
+@Xx(+1)
+public class Bar2 { }
+
+@Xx(<error descr="Expected '++1' to be an inline constant">++1</error>)
+public class Bar3 { }
+''')
+  }
+
 }

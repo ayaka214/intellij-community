@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2012 JetBrains s.r.o.
+ * Copyright 2000-2013 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,10 +31,15 @@ import java.util.List;
 public class ElementStub extends DomStub {
 
   private final List<DomStub> myChildren = new SmartList<DomStub>();
+  private final int myIndex;
   private final boolean myCustom;
 
-  public ElementStub(@Nullable ElementStub parent, @NotNull StringRef name, @Nullable StringRef namespace, boolean custom) {
+  @Nullable
+  private Class myElementClass;
+
+  public ElementStub(@Nullable ElementStub parent, @NotNull StringRef name, @Nullable StringRef namespace, int index, boolean custom) {
     super(parent, name, namespace);
+    myIndex = index;
     myCustom = custom;
   }
 
@@ -58,13 +63,21 @@ public class ElementStub extends DomStub {
     return StringUtil.isEmpty(key) ? getName() : key + ":" + getName();
   }
 
-  @Override
-  public boolean equals(Object obj) {
-    if (obj == this) return true;
-    return obj instanceof ElementStub && id == ((ElementStub)obj).id && myLocalName.equals(((ElementStub)obj).myLocalName);
-  }
-
   public boolean isCustom() {
     return myCustom;
+  }
+
+  @Override
+  public int getIndex() {
+    return myIndex;
+  }
+
+  public void setElementClass(@Nullable Class elementClass) {
+    myElementClass = elementClass;
+  }
+
+  @Nullable
+  Class getElementClass() {
+    return myElementClass;
   }
 }

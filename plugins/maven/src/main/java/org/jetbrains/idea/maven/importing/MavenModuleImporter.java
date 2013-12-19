@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2009 JetBrains s.r.o.
+ * Copyright 2000-2013 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -317,11 +317,13 @@ public class MavenModuleImporter {
   public static DependencyScope selectScope(String mavenScope) {
     if (MavenConstants.SCOPE_RUNTIME.equals(mavenScope)) return DependencyScope.RUNTIME;
     if (MavenConstants.SCOPE_TEST.equals(mavenScope)) return DependencyScope.TEST;
-    if (MavenConstants.SCOPE_PROVIDEED.equals(mavenScope)) return DependencyScope.PROVIDED;
+    if (MavenConstants.SCOPE_PROVIDED.equals(mavenScope)) return DependencyScope.PROVIDED;
     return DependencyScope.COMPILE;
   }
 
   private void configLanguageLevel() {
+    if ("false".equalsIgnoreCase(System.getProperty("idea.maven.configure.language.level"))) return;
+
     LanguageLevel level = null;
 
     Element cfg = myMavenProject.getPluginConfiguration("com.googlecode", "maven-idea-plugin");

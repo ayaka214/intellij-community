@@ -27,11 +27,14 @@ import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.util.Pair;
+import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
 import java.util.Collections;
@@ -53,9 +56,11 @@ public class GotoActionAction extends GotoActionBase implements DumbAware {
   public void gotoActionPerformed(final AnActionEvent e) {
     final Project project = e.getData(CommonDataKeys.PROJECT);
     final Component component = e.getData(PlatformDataKeys.CONTEXT_COMPONENT);
+    final Editor editor = e.getData(CommonDataKeys.EDITOR);
+    final PsiFile file = e.getData(CommonDataKeys.PSI_FILE);
 
     FeatureUsageTracker.getInstance().triggerFeatureUsed("navigation.popup.action");
-    final GotoActionModel model = new GotoActionModel(project, component);
+    final GotoActionModel model = new GotoActionModel(project, component, editor, file);
     final GotoActionCallback<Object> callback = new GotoActionCallback<Object>() {
       @Override
       public void elementChosen(ChooseByNamePopup popup, final Object element) {
@@ -86,7 +91,7 @@ public class GotoActionAction extends GotoActionBase implements DumbAware {
                                                final String enteredText,
                                                final Project project,
                                                final Component component,
-                                               @NotNull final AnActionEvent e) {
+                                               @Nullable final AnActionEvent e) {
     if (element instanceof OptionDescription) {
       final String configurableId = ((OptionDescription)element).getConfigurableId();
       ApplicationManager.getApplication().invokeLater(new Runnable() {
@@ -108,10 +113,12 @@ public class GotoActionAction extends GotoActionBase implements DumbAware {
             }
             final Presentation presentation = action.getTemplatePresentation().clone();
             final DataContext context = DataManager.getInstance().getDataContext(component);
-            final AnActionEvent event = new AnActionEvent(e.getInputEvent(), context,
-                                                          e.getPlace(), presentation,
+            final AnActionEvent event = new AnActionEvent(e == null ? null : e.getInputEvent(),
+                                                          context,
+                                                          e == null ? ActionPlaces.UNKNOWN : e.getPlace(),
+                                                          presentation,
                                                           ActionManager.getInstance(),
-                                                          e.getModifiers());
+                                                          e == null ? 0 : e.getModifiers());
 
             if (ActionUtil.lastUpdateAndCheckDumb(action, event, true)) {
               if (action instanceof ActionGroup) {

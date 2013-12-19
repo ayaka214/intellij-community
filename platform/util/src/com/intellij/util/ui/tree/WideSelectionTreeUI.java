@@ -37,6 +37,7 @@ import java.awt.event.MouseListener;
 * @author Konstantin Bulenkov
 */
 public class WideSelectionTreeUI extends BasicTreeUI {
+  public static final String TREE_TABLE_TREE_KEY = "TreeTableTree";
 
   @NonNls public static final String SOURCE_LIST_CLIENT_PROPERTY = "mac.ui.source.list";
   @NonNls public static final String STRIPED_CLIENT_PROPERTY = "mac.ui.striped";
@@ -68,8 +69,18 @@ public class WideSelectionTreeUI extends BasicTreeUI {
     myWideSelectionCondition = wideSelectionCondition;
   }
 
+  @Override
+  public int getRightChildIndent() {
+    return isSkinny() ? 8 : super.getRightChildIndent();
+  }
+
+  private static boolean isSkinny() {
+    return UIUtil.isUnderDarcula() || UIUtil.isUnderIntelliJLaF() || UIUtil.isUnderAquaLookAndFeel();
+  }
+
   private final MouseListener mySelectionListener = new MouseAdapter() {
     boolean handled = false;
+    @Override
     public void mousePressed(@NotNull final MouseEvent e) {
       handled = false;
       if (!isSelected(e)) {
@@ -205,6 +216,7 @@ public class WideSelectionTreeUI extends BasicTreeUI {
     }
 
     actionMap.put("collapse_or_move_up", new TreeUIAction() {
+      @Override
       public void actionPerformed(final ActionEvent e) {
         final Object source = e.getSource();
         if (source instanceof JTree) {
@@ -238,6 +250,11 @@ public class WideSelectionTreeUI extends BasicTreeUI {
   }
 
   private abstract static class TreeUIAction extends AbstractAction implements UIResource {
+  }
+
+  @Override
+  protected int getRowX(int row, int depth) {
+    return isSkinny() ? 8 * depth + 8 : super.getRowX(row, depth);
   }
 
   @Override
@@ -354,7 +371,7 @@ public class WideSelectionTreeUI extends BasicTreeUI {
       }
       else {
         if (selected && (UIUtil.isUnderAquaBasedLookAndFeel() || UIUtil.isUnderDarcula() || UIUtil.isUnderIntelliJLaF())) {
-          Color bg = UIUtil.getTreeSelectionBackground(tree.hasFocus());
+          Color bg = UIUtil.getTreeSelectionBackground(tree.hasFocus() || Boolean.TRUE.equals(tree.getClientProperty(TREE_TABLE_TREE_KEY)));
 
           if (myWideSelectionCondition.value(row)) {
             rowGraphics.setColor(bg);

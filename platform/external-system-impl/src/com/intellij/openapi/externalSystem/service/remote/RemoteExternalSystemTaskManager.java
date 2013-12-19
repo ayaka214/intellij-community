@@ -46,13 +46,15 @@ public interface RemoteExternalSystemTaskManager<S extends ExternalSystemExecuti
                                @NotNull String projectPath,
                                @Nullable ExternalSystemExecutionSettings settings,
                                @Nullable String vmOptions,
+                               @Nullable String scriptParameters,
                                @Nullable String debuggerSetup) throws RemoteException, ExternalSystemException
       {
       }
 
       @Override
-      public void cancelTask(@NotNull ExternalSystemTaskId id) throws RemoteException, ExternalSystemException
+      public boolean cancelTask(@NotNull ExternalSystemTaskId id) throws RemoteException, ExternalSystemException
       {
+        return false;
       }
 
       @Override
@@ -80,7 +82,8 @@ public interface RemoteExternalSystemTaskManager<S extends ExternalSystemExecuti
                     @NotNull String projectPath,
                     @Nullable S settings,
                     @Nullable String vmOptions,
+                    @Nullable String scriptParameters,
                     @Nullable String debuggerSetup) throws RemoteException, ExternalSystemException;
 
-  void cancelTask(@NotNull ExternalSystemTaskId id) throws RemoteException, ExternalSystemException;
+  boolean cancelTask(@NotNull ExternalSystemTaskId id) throws RemoteException, ExternalSystemException;
 }

@@ -486,7 +486,7 @@ public class PsiUtilCore {
 
   @NotNull
   public static Language findLanguageFromElement(final PsiElement elt) {
-    if (elt.getFirstChild() == null) { //is leaf
+    if (!(elt instanceof PsiFile) && elt.getFirstChild() == null) { //is leaf
       final PsiElement parent = elt.getParent();
       if (parent != null) {
         return parent.getLanguage();
@@ -501,7 +501,11 @@ public class PsiUtilCore {
     final PsiElement elt = file.findElementAt(offset);
     if (elt == null) return file.getLanguage();
     if (elt instanceof PsiWhiteSpace) {
-      final int decremented = elt.getTextRange().getStartOffset() - 1;
+      TextRange textRange = elt.getTextRange();
+      if (!textRange.contains(offset)) {
+        LOG.error("PSI corrupted: in file "+file+" ("+file.getViewProvider().getVirtualFile()+") offset="+offset+" returned element "+elt+" with text range "+textRange);
+      }
+      final int decremented = textRange.getStartOffset() - 1;
       if (decremented >= 0) {
         return getLanguageAtOffset(file, decremented);
       }

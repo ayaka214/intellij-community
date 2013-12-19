@@ -168,7 +168,7 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements NamedJDOME
     myMessageBus = bus;
     mySchemesManager = schemesManagerFactory.createSchemesManager(FILE_SPEC, new BaseSchemeProcessor<AbstractFileType>() {
       @Override
-      public AbstractFileType readScheme(final Document document) throws InvalidDataException {
+      public AbstractFileType readScheme(@NotNull final Document document) throws InvalidDataException {
         if (document == null) {
           throw new InvalidDataException();
         }
@@ -195,12 +195,12 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements NamedJDOME
       }
 
       @Override
-      public boolean shouldBeSaved(final AbstractFileType fileType) {
+      public boolean shouldBeSaved(@NotNull final AbstractFileType fileType) {
         return shouldBeSavedToFile(fileType);
       }
 
       @Override
-      public Document writeScheme(final AbstractFileType fileType) throws WriteExternalException {
+      public Document writeScheme(@NotNull final AbstractFileType fileType) throws WriteExternalException {
         Element root = new Element(ELEMENT_FILETYPE);
 
         writeHeader(root, fileType);
@@ -221,7 +221,7 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements NamedJDOME
       }
 
       @Override
-      public void onSchemeAdded(final AbstractFileType scheme) {
+      public void onSchemeAdded(@NotNull final AbstractFileType scheme) {
         fireBeforeFileTypesChanged();
         if (scheme instanceof ReadFileType) {
           loadFileType((ReadFileType)scheme);
@@ -230,7 +230,7 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements NamedJDOME
       }
 
       @Override
-      public void onSchemeDeleted(final AbstractFileType scheme) {
+      public void onSchemeDeleted(@NotNull final AbstractFileType scheme) {
         fireBeforeFileTypesChanged();
         myPatternsTable.removeAllAssociations(scheme);
         fireFileTypesChanged();
@@ -285,6 +285,9 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements NamedJDOME
 
     for (final StandardFileType pair : myStandardFileTypes.values()) {
       registerFileTypeWithoutNotification(pair.fileType, pair.matchers);
+    }
+    for (StandardFileType pair : myStandardFileTypes.values()) {
+      registerReDetectedMappings(pair);
     }
     // Resolve unresolved mappings initialized before certain plugin initialized.
     for (final StandardFileType pair : myStandardFileTypes.values()) {
@@ -891,9 +894,6 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements NamedJDOME
     for (FileNameMatcher matcher : new THashSet<FileNameMatcher>(myUnresolvedRemovedMappings.keySet())) {
       Trinity<String, String, Boolean> trinity = myUnresolvedRemovedMappings.get(matcher);
       if (Comparing.equal(trinity.getFirst(), fileType.getName())) {
-        if (trinity.getSecond() == null || PlainTextFileType.INSTANCE.getName().equals(trinity.getSecond())) {
-          myRemovedMappings.put(matcher, Pair.create(fileType, trinity.getThird()));
-        }
         removeAssociation(fileType, matcher, false);
         myUnresolvedRemovedMappings.remove(matcher);
       }
@@ -1131,6 +1131,18 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements NamedJDOME
   @Override
   public FileType getKnownFileTypeOrAssociate(@NotNull VirtualFile file, @NotNull Project project) {
     return FileTypeChooser.getKnownFileTypeOrAssociate(file, project);
+  }
+
+  private void registerReDetectedMappings(StandardFileType pair) {
+    FileType fileType = pair.fileType;
+    if (fileType == PlainTextFileType.INSTANCE) return;
+    for (FileNameMatcher matcher : pair.matchers) {
+      String typeName = myUnresolvedMappings.get(matcher);
+      if (typeName != null && !typeName.equals(fileType.getName())) {
+        Trinity<String, String, Boolean> trinity = myUnresolvedRemovedMappings.get(matcher);
+        myRemovedMappings.put(matcher, Pair.create(fileType, trinity != null && trinity.third));
+      }
+    }
   }
 
   Map<FileNameMatcher, Pair<FileType, Boolean>> getRemovedMappings() {

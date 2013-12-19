@@ -56,7 +56,6 @@ public class RequestHint {
 
   private boolean myIgnoreFilters = false;
   private boolean myRestoreBreakpoints = false;
-  private final boolean mySkipThisMethod = false;
 
   public RequestHint(final ThreadReferenceProxyImpl stepThread, final SuspendContextImpl suspendContext, @NotNull MethodFilter methodFilter) {
     this(stepThread, suspendContext, StepRequest.STEP_INTO, methodFilter);
@@ -125,7 +124,7 @@ public class RequestHint {
   }
 
   public int getDepth() {
-    return mySkipThisMethod ? StepRequest.STEP_OUT : myDepth;
+    return myDepth;
   }
 
   @Nullable
@@ -134,7 +133,7 @@ public class RequestHint {
   }
 
   public boolean wasStepTargetMethodMatched() {
-    return myTargetMethodMatched;
+    return myMethodFilter instanceof BreakpointStepMethodFilter || myTargetMethodMatched;
   }
 
   public int getNextStepDepth(final SuspendContextImpl context) {
@@ -227,7 +226,7 @@ public class RequestHint {
         }
         // smart step feature
         if (myMethodFilter != null) {
-          if (myMethodFilter.getBreakpointPosition() != null) {
+          if (myMethodFilter instanceof BreakpointStepMethodFilter) {
             // continue stepping if stop criterion is implemented as breakpoint request
             return StepRequest.STEP_OUT;
           }

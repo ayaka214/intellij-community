@@ -70,6 +70,9 @@ public class PyAttributeOutsideInitInspection extends PyInspection {
       if (!isApplicable(containingClass)) {
         return;
       }
+
+      final PyFunction.Modifier modifier = node.getModifier();
+      if (modifier != null) return;
       final List<PyTargetExpression> classAttributes = containingClass.getClassAttributes();
 
       Map<String, PyTargetExpression> attributesInInit = new HashMap<String, PyTargetExpression>();
@@ -95,9 +98,11 @@ public class PyAttributeOutsideInitInspection extends PyInspection {
       PyClassImpl.collectInstanceAttributes(node, attributes);
 
       for (Map.Entry<String, PyTargetExpression> attribute : attributes.entrySet()) {
-        final Property property = containingClass.findProperty(attribute.getKey());
-        if (!attributesInInit.containsKey(attribute.getKey()) && property == null) {
-          registerProblem(attribute.getValue(), PyBundle.message("INSP.attribute.$0.outside.init", attribute.getKey()),
+        String attributeName = attribute.getKey();
+        if (attributeName == null) continue;
+        final Property property = containingClass.findProperty(attributeName);
+        if (!attributesInInit.containsKey(attributeName) && property == null) {
+          registerProblem(attribute.getValue(), PyBundle.message("INSP.attribute.$0.outside.init", attributeName),
                           new PyMoveAttributeToInitQuickFix());
         }
       }

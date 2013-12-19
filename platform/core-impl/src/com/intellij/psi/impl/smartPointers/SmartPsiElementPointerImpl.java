@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2009 JetBrains s.r.o.
+ * Copyright 2000-2013 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -93,8 +93,7 @@ class SmartPsiElementPointerImpl<E extends PsiElement> implements SmartPointerEx
 
   @Override
   public E getCachedElement() {
-    Reference<E> ref = myElement;
-    return ref == null ? null : ref.get();
+    return com.intellij.reference.SoftReference.dereference(myElement);
   }
 
   @Override
@@ -190,7 +189,7 @@ class SmartPsiElementPointerImpl<E extends PsiElement> implements SmartPointerEx
       if (!elementInfo1.pointsToTheSameElementAs(elementInfo2)) return false;
       PsiElement cachedElement1 = impl1.getCachedElement();
       PsiElement cachedElement2 = impl2.getCachedElement();
-      return cachedElement1 == null || cachedElement2 == null || cachedElement1 == cachedElement2;
+      return cachedElement1 == null || cachedElement2 == null || Comparing.equal(cachedElement1, cachedElement2);
     }
     return Comparing.equal(pointer1.getElement(), pointer2.getElement());
   }

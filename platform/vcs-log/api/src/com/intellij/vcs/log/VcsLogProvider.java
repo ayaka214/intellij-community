@@ -3,8 +3,10 @@ package com.intellij.vcs.log;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.VcsKey;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.Consumer;
 import com.intellij.util.messages.MessageBus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
@@ -23,10 +25,11 @@ public interface VcsLogProvider {
   List<? extends VcsFullCommitDetails> readFirstBlock(@NotNull VirtualFile root, boolean ordered, int commitCount) throws VcsException;
 
   /**
-   * Reads the whole history, but only hashes & parents.
+   * <p>Reads the whole history, but only hashes & parents.</p>
+   * <p>Also reports authors/committers of this repository to the given user registry.</p>
    */
   @NotNull
-  List<TimedVcsCommit> readAllHashes(@NotNull VirtualFile root) throws VcsException;
+  List<TimedVcsCommit> readAllHashes(@NotNull VirtualFile root, @NotNull Consumer<VcsUser> userRegistry) throws VcsException;
 
   /**
    * Reads those details of the given commits, which are necessary to be shown in the log table.
@@ -76,5 +79,18 @@ public interface VcsLogProvider {
   @NotNull
   List<? extends VcsFullCommitDetails> getFilteredDetails(@NotNull VirtualFile root,
                                                           @NotNull Collection<VcsLogFilter> filters) throws VcsException;
+
+  /**
+   * Returns the name of current user as specified for the given root,
+   * or null if user didn't configure his name in the VCS settings.
+   */
+  @Nullable
+  VcsUser getCurrentUser(@NotNull VirtualFile root) throws VcsException;
+
+  /**
+   * Returns the list of names of branches/references which contain the given commit.
+   */
+  @NotNull
+  Collection<String> getContainingBranches(@NotNull VirtualFile root, @NotNull Hash commitHash) throws VcsException;
 
 }

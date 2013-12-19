@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2009 JetBrains s.r.o.
+ * Copyright 2000-2013 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ public class LineBreakpoint extends BreakpointWithHighlighter {
   private static final Logger LOG = Logger.getInstance("#com.intellij.debugger.ui.breakpoints.LineBreakpoint");
 
   @Nullable
-  private String myMethodName;
+  private String myOwnerMethodName;
   public static final @NonNls Key<LineBreakpoint> CATEGORY = BreakpointCategory.lookup("line_breakpoints");
 
   protected LineBreakpoint(Project project) {
@@ -137,7 +137,7 @@ public class LineBreakpoint extends BreakpointWithHighlighter {
       final RangeHighlighter highlighter = getHighlighter();
       offset = highlighter != null? highlighter.getStartOffset() : -1;
     }
-    myMethodName = offset >=0 ? findMethodName(file, offset) : null;
+    myOwnerMethodName = findOwnerMethod(file, offset);
   }
 
   @Override
@@ -374,7 +374,9 @@ public class LineBreakpoint extends BreakpointWithHighlighter {
       final int lineNumber = (highlighter.getDocument().getLineNumber(highlighter.getStartOffset()) + 1);
       String className = getClassName();
       final boolean hasClassInfo = className != null && className.length() > 0;
-      final boolean hasMethodInfo = myMethodName != null && myMethodName.length() > 0;
+      final String methodName = getMethodName();
+      final String displayName = methodName != null? methodName + "()" : null;
+      final boolean hasMethodInfo = displayName != null && displayName.length() > 0;
       if (hasClassInfo || hasMethodInfo) {
         final StringBuilder info = StringBuilderSpinAllocator.alloc();
         try {
@@ -388,8 +390,8 @@ public class LineBreakpoint extends BreakpointWithHighlighter {
             }
 
             if (totalTextLength != -1) {
-              if (className.length() + (hasMethodInfo ? myMethodName.length() : 0) > totalTextLength + 3) {
-                int offset = totalTextLength - (hasMethodInfo ? myMethodName.length() : 0);
+              if (className.length() + (hasMethodInfo ? displayName.length() : 0) > totalTextLength + 3) {
+                int offset = totalTextLength - (hasMethodInfo ? displayName.length() : 0);
                 if (offset > 0 && offset < className.length()) {
                   className = className.substring(className.length() - offset);
                   info.append("...");
@@ -406,7 +408,7 @@ public class LineBreakpoint extends BreakpointWithHighlighter {
             else if (hasClassInfo) {
               info.append(".");
             }
-            info.append(myMethodName);
+            info.append(displayName);
           }
           if (showPackageInfo && packageName != null) {
             info.append(" (").append(packageName).append(")");
@@ -422,8 +424,9 @@ public class LineBreakpoint extends BreakpointWithHighlighter {
     return DebuggerBundle.message("status.breakpoint.invalid");
   }
 
-  private static @Nullable String findMethodName(final PsiFile file, final int offset) {
-    if (file instanceof JspFile) {
+  @Nullable
+  private static String findOwnerMethod(final PsiFile file, final int offset) {
+    if (offset < 0 || file instanceof JspFile) {
       return null;
     }
     if (file instanceof PsiClassOwner) {
@@ -431,7 +434,7 @@ public class LineBreakpoint extends BreakpointWithHighlighter {
         @Override
         public String compute() {
           final PsiMethod method = DebuggerUtilsEx.findPsiMethod(file, offset);
-          return method != null? method.getName() + "()" : null;
+          return method != null? method.getName() : null;
         }
       });
     }
@@ -559,7 +562,9 @@ public class LineBreakpoint extends BreakpointWithHighlighter {
     return canAdd[0];
   }
 
-  public @Nullable String getMethodName() {
-    return myMethodName;
+  @Nullable
+  public String getMethodName() {
+    return myOwnerMethodName;
   }
+
 }

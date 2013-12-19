@@ -796,6 +796,7 @@ public class UsageViewImpl implements UsageView, UsageModelTracker.UsageModelTra
           @Override
           public boolean process(final Usage usage) {
             if (searchHasBeenCancelled()) return false;
+            TooManyUsagesStatus.getFrom(indicator).pauseProcessingIfTooManyUsages();
 
             boolean incrementCounter = !com.intellij.usages.UsageViewManager.isSelfUsage(usage, myTargets);
 
@@ -808,6 +809,7 @@ public class UsageViewImpl implements UsageView, UsageModelTracker.UsageModelTra
                 }
               }
               ApplicationManager.getApplication().runReadAction(new Runnable() {
+                @Override
                 public void run() {
                   appendUsage(usage);
                 }
@@ -1375,6 +1377,7 @@ public class UsageViewImpl implements UsageView, UsageModelTracker.UsageModelTra
         @Override
         protected Navigatable createDescriptorForNode(DefaultMutableTreeNode node) {
           if (node.getChildCount() > 0) return null;
+          if (node instanceof Node && ((Node)node).isExcluded()) return null;
           return getNavigatableForNode(node);
         }
 
@@ -1601,7 +1604,7 @@ public class UsageViewImpl implements UsageView, UsageModelTracker.UsageModelTra
           String[] options = {UsageViewBundle.message("action.description.rerun"), UsageViewBundle.message("usage.view.cancel.button")};
           String message = myCannotMakeString + "\n\n" + UsageViewBundle.message("dialog.rerun.search");
           int answer = Messages.showOkCancelDialog(myProject, message, title, options[0], options[1], Messages.getErrorIcon());
-          if (answer == 0) {
+          if (answer == Messages.OK) {
             refreshUsages();
           }
         }

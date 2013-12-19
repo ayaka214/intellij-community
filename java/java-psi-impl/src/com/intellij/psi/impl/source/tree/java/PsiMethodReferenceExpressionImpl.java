@@ -23,6 +23,7 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.PsiManagerEx;
+import com.intellij.psi.impl.light.LightMethod;
 import com.intellij.psi.impl.source.resolve.ParameterTypeInferencePolicy;
 import com.intellij.psi.impl.source.resolve.ResolveCache;
 import com.intellij.psi.impl.source.tree.ChildRole;
@@ -74,6 +75,17 @@ public class PsiMethodReferenceExpressionImpl extends PsiReferenceExpressionBase
   }
 
   public PsiMember getPotentiallyApplicableMember() {
+    return CachedValuesManager.getCachedValue(this, new CachedValueProvider<PsiMember>() {
+      @Nullable
+      @Override
+      public Result<PsiMember> compute() {
+        return Result.createSingleDependency(getPotentiallyApplicableMemberInternal(),
+                                             PsiModificationTracker.JAVA_STRUCTURE_MODIFICATION_COUNT);
+      }
+    });
+  }
+
+  private PsiMember getPotentiallyApplicableMemberInternal() {
     final PsiElement element = getReferenceNameElement();
     final PsiMethodReferenceUtil.QualifierResolveResult qualifierResolveResult = PsiMethodReferenceUtil.getQualifierResolveResult(this);
     final PsiClass containingClass = qualifierResolveResult.getContainingClass();
@@ -82,27 +94,51 @@ public class PsiMethodReferenceExpressionImpl extends PsiReferenceExpressionBase
       if (element instanceof PsiIdentifier) {
         methods = containingClass.findMethodsByName(element.getText(), false);
       }
-      else if (element instanceof PsiKeyword && PsiKeyword.NEW.equals(element.getText())) {
-        methods = containingClass.getConstructors();
-        if (methods.length == 0) { //default constructor
-          return containingClass;
+      else if (isConstructor()) {
+        final PsiElementFactory factory = JavaPsiFacade.getElementFactory(getProject());
+        final PsiClass arrayClass = factory.getArrayClass(PsiUtil.getLanguageLevel(this));
+        if (arrayClass == containingClass) {
+          final PsiType componentType = qualifierResolveResult.getSubstitutor().substitute(arrayClass.getTypeParameters()[0]);
+          LOG.assertTrue(componentType != null, qualifierResolveResult.getSubstitutor());
+          methods = new PsiMethod[] {factory.createMethodFromText("public " + componentType.createArrayType().getCanonicalText() + " __array__(int i) {return null;}", this)};
+        } else {
+          methods = containingClass.getConstructors();
         }
       }
       if (methods != null) {
         PsiMethod psiMethod = null;
-        for (PsiMethod method : methods) {
-          if (PsiUtil.isAccessible(method, this, null)) {
-            if (psiMethod != null) return null;
-            psiMethod = method;
+        if (methods.length > 0) {
+          for (PsiMethod method : methods) {
+            if (PsiUtil.isAccessible(method, this, null)) {
+              if (psiMethod != null) return null;
+              psiMethod = method;
+            }
+          }
+          if (psiMethod == null) return null;
+          if (psiMethod.isVarArgs()) return null;
+          if (psiMethod.getTypeParameters().length > 0) {
+            final PsiReferenceParameterList parameterList = getParameterList();
+            return parameterList != null && parameterList.getTypeParameterElements().length > 0 ? psiMethod : null;
           }
         }
-        if (psiMethod == null) return null;
-        if (psiMethod.isVarArgs()) return null;
-        if (psiMethod.getTypeParameters().length > 0) {
-          final PsiReferenceParameterList parameterList = getParameterList();
-          return parameterList != null && parameterList.getTypeParameterElements().length > 0 ? psiMethod : null;
+        if (containingClass.isPhysical() && containingClass.hasTypeParameters()) {
+          final PsiElement qualifier = getQualifier();
+          if (qualifier instanceof PsiTypeElement) {
+            final PsiJavaCodeReferenceElement referenceElement = ((PsiTypeElement)qualifier).getInnermostComponentReferenceElement();
+            if (referenceElement != null) {
+              final PsiReferenceParameterList parameterList = referenceElement.getParameterList();
+              if (parameterList == null || parameterList.getTypeParameterElements().length == 0) {
+                return null;
+              }
+            }
+          } else if (qualifier instanceof PsiReferenceExpression) {
+            final PsiReferenceParameterList parameterList = ((PsiReferenceExpression)qualifier).getParameterList();
+            if (parameterList == null || parameterList.getTypeParameterElements().length == 0) {
+              return null;
+            }
+          }
         }
-        return psiMethod;
+        return psiMethod == null ? containingClass : psiMethod;
       }
     }
     return null;
@@ -299,7 +335,7 @@ public class PsiMethodReferenceExpressionImpl extends PsiReferenceExpressionBase
 
       if (containingClass != null) {
         final PsiElement element = getReferenceNameElement();
-        final boolean isConstructor = element instanceof PsiKeyword && PsiKeyword.NEW.equals(element.getText());
+        final boolean isConstructor = isConstructor();
         if (element instanceof PsiIdentifier || isConstructor) {
           if (isConstructor && (containingClass.isEnum() || containingClass.hasModifierProperty(PsiModifier.ABSTRACT))) {
             return JavaResolveResult.EMPTY_ARRAY;
@@ -325,7 +361,7 @@ public class PsiMethodReferenceExpressionImpl extends PsiReferenceExpressionBase
             final PsiClassType returnType = JavaPsiFacade.getElementFactory(project).createType(containingClass,
                                                                                                      isRawSubst ? PsiSubstitutor.EMPTY : substitutor);
 
-            substitutor = LambdaUtil.inferFromReturnType(typeParameters, returnType, interfaceMethodReturnType, substitutor, languageLevel,
+            substitutor = LambdaUtil.inferFromReturnType(typeParameters, returnType, GenericsUtil.eliminateWildcards(interfaceMethodReturnType), substitutor, languageLevel,
                                                          project);
 
             if (containingClass.getConstructors().length == 0) {
@@ -356,8 +392,9 @@ public class PsiMethodReferenceExpressionImpl extends PsiReferenceExpressionBase
                                                                 final boolean staticProblem,
                                                                 final boolean accessible) {
                 final PsiExpressionList argumentList = getArgumentList();
+                final PsiType[] typeParameters = PsiMethodReferenceExpressionImpl.this.getTypeParameters();
                 return new MethodCandidateInfo(method, substitutor, !accessible, staticProblem, argumentList, myCurrentFileContext,
-                                               argumentList != null ? argumentList.getExpressionTypes() : null, getTypeArguments(),
+                                               argumentList != null ? argumentList.getExpressionTypes() : null, typeParameters.length > 0 ? typeParameters : null,
                                                getLanguageLevel()) {
                   @Override
                   public PsiSubstitutor inferTypeArguments(@NotNull ParameterTypeInferencePolicy policy, boolean includeReturnConstraint) {
@@ -402,9 +439,12 @@ public class PsiMethodReferenceExpressionImpl extends PsiReferenceExpressionBase
         }
       } else {
         if (rightTypes.length != types.length || rightTypes[rightTypes.length - 1].getArrayDimensions() != types[types.length-1].getArrayDimensions()) {
-          types[types.length - 1] = ((PsiArrayType)types[types.length - 1]).getComponentType();
+          boolean expandTypeArray = types.length < rightTypes.length;
           int min = Math.min(types.length, rightTypes.length);
           types = Arrays.copyOf(types, min);
+          if (expandTypeArray) {
+            types[types.length - 1] = ((PsiArrayType)types[types.length - 1]).getComponentType();
+          }
           rightTypes = Arrays.copyOf(rightTypes, min);
         }
       }
@@ -421,8 +461,8 @@ public class PsiMethodReferenceExpressionImpl extends PsiReferenceExpressionBase
         psiSubstitutor = psiSubstitutor.putAll(substitutor);
       }
       return LambdaUtil.inferFromReturnType(method.getTypeParameters(),
-                                            psiSubstitutor.substitute(method.getReturnType()),
-                                            interfaceMethodReturnType,
+                                            method.getReturnType(),
+                                            GenericsUtil.eliminateWildcards(interfaceMethodReturnType),
                                             psiSubstitutor,
                                             languageLevel, getProject());
     }
@@ -471,7 +511,7 @@ public class PsiMethodReferenceExpressionImpl extends PsiReferenceExpressionBase
           final PsiMethod psiMethod = ((MethodCandidateInfo)conflict).getElement();
           if (psiMethod == null) continue;
           PsiSubstitutor subst = PsiSubstitutor.EMPTY;
-          subst = subst.putAll(mySubstitutor);
+          subst = subst.putAll(TypeConversionUtil.getSuperClassSubstitutor(psiMethod.getContainingClass(), myQualifierResolveResult.getContainingClass(), mySubstitutor));
           subst = subst.putAll(conflict.getSubstitutor());
           final PsiType[] signatureParameterTypes2 = psiMethod.getSignature(subst).getParameterTypes();
 
@@ -534,6 +574,9 @@ public class PsiMethodReferenceExpressionImpl extends PsiReferenceExpressionBase
 
       @Override
       public CandidateInfo resolveConflict(@NotNull List<CandidateInfo> conflicts) {
+        checkSameSignatures(conflicts);
+        if (conflicts.size() == 1) return conflicts.get(0);
+
         checkAccessStaticLevels(conflicts, true);
         if (conflicts.size() == 1) return conflicts.get(0);
 
@@ -566,9 +609,24 @@ public class PsiMethodReferenceExpressionImpl extends PsiReferenceExpressionBase
       }
 
       @Override
-      protected boolean checkSameConflicts(CandidateInfo method, CandidateInfo conflict) {
-        return method == conflict;
+      protected boolean nonComparable(CandidateInfo method, CandidateInfo conflict) {
+        if (method == conflict) return true;
+        PsiElement psiElement = method.getElement();
+        PsiElement conflictElement = conflict.getElement();
+        if (psiElement instanceof PsiMethod && conflictElement instanceof PsiMethod) {
+          if (((PsiMethod)psiElement).getParameterList().getParametersCount() !=
+              ((PsiMethod)conflictElement).getParameterList().getParametersCount()) {
+            return true;
+          }
+        }
+        return false;
       }
     }
+  }
+
+  @Override
+  public boolean isConstructor() {
+    final PsiElement element = getReferenceNameElement();
+    return element instanceof PsiKeyword && PsiKeyword.NEW.equals(element.getText());
   }
 }

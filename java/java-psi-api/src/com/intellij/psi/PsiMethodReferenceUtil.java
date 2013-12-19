@@ -18,10 +18,9 @@ package com.intellij.psi;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.pom.java.LanguageLevel;
+import com.intellij.psi.infos.MethodCandidateInfo;
 import com.intellij.psi.util.*;
 import com.intellij.util.Function;
-import com.sun.tools.javac.code.Kinds;
-import com.sun.tools.javac.tree.TreeInfo;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -86,6 +85,7 @@ public class PsiMethodReferenceUtil {
       myReferenceTypeQualified = referenceTypeQualified;
     }
 
+    @Nullable
     public PsiClass getContainingClass() {
       return myContainingClass;
     }
@@ -131,7 +131,10 @@ public class PsiMethodReferenceUtil {
         if (resolve instanceof PsiClass) {
           containingClass = (PsiClass)resolve;
           substitutor = resolveResult.getSubstitutor();
-          return new QualifierResolveResult(containingClass, substitutor, true);
+          final boolean isRawSubst = !methodReferenceExpression.isConstructor() && 
+                                     PsiTreeUtil.isAncestor(containingClass, methodReferenceExpression, true) && 
+                                     PsiUtil.isRawSubstitutor(containingClass, substitutor);
+          return new QualifierResolveResult(containingClass, isRawSubst ? PsiSubstitutor.EMPTY : substitutor, true);
         }
       }
     }
@@ -160,6 +163,10 @@ public class PsiMethodReferenceUtil {
 
   public static boolean isAcceptable(@Nullable final PsiMethodReferenceExpression methodReferenceExpression, PsiType left) {
     if (methodReferenceExpression == null) return false;
+    final PsiElement argsList = PsiTreeUtil.getParentOfType(methodReferenceExpression, PsiExpressionList.class);
+    if (MethodCandidateInfo.ourOverloadGuard.currentStack().contains(argsList)) {
+      if (!methodReferenceExpression.isExact()) return true;
+    }
     if (left instanceof PsiIntersectionType) {
       for (PsiType conjunct : ((PsiIntersectionType)left).getConjuncts()) {
         if (isAcceptable(methodReferenceExpression, conjunct)) return true;
@@ -191,24 +198,26 @@ public class PsiMethodReferenceUtil {
       if (resolve instanceof PsiMethod) {
         final MethodSignature signature1 = method.getSignature(LambdaUtil.getSubstitutor(method, resolveResult));
         PsiSubstitutor subst = PsiSubstitutor.EMPTY;
-        subst = subst.putAll(qualifierResolveResult.getSubstitutor());
+        subst = subst.putAll(TypeConversionUtil.getSuperClassSubstitutor(((PsiMethod)resolve).getContainingClass(), qualifierResolveResult.getContainingClass(), qualifierResolveResult.getSubstitutor()));
         subst = subst.putAll(result.getSubstitutor());
         final MethodSignature signature2 = ((PsiMethod)resolve).getSignature(subst);
 
-        final PsiType interfaceReturnType = LambdaUtil.getFunctionalInterfaceReturnType(left);
+        if (methodReferenceExpression.isExact()) {
+          final PsiType interfaceReturnType = LambdaUtil.getFunctionalInterfaceReturnType(left);
 
-        PsiType returnType = PsiTypesUtil.patchMethodGetClassReturnType(methodReferenceExpression, methodReferenceExpression,
-                                                                        (PsiMethod)resolve, null,
-                                                                        PsiUtil.getLanguageLevel(methodReferenceExpression));
-        if (returnType == null) {
-          returnType = ((PsiMethod)resolve).getReturnType();
-        }
-        PsiType methodReturnType = subst.substitute(returnType);
-        if (interfaceReturnType != null && interfaceReturnType != PsiType.VOID) {
-          if (methodReturnType == null) {
-            methodReturnType = JavaPsiFacade.getElementFactory(methodReferenceExpression.getProject()).createType(((PsiMethod)resolve).getContainingClass(), subst);
+          PsiType returnType = PsiTypesUtil.patchMethodGetClassReturnType(methodReferenceExpression, methodReferenceExpression,
+                                                                          (PsiMethod)resolve, null,
+                                                                          PsiUtil.getLanguageLevel(methodReferenceExpression));
+          if (returnType == null) {
+            returnType = ((PsiMethod)resolve).getReturnType();
           }
-          //if (!TypeConversionUtil.isAssignable(interfaceReturnType, methodReturnType, false)) return false;
+          PsiType methodReturnType = subst.substitute(returnType);
+          if (interfaceReturnType != null && interfaceReturnType != PsiType.VOID) {
+            if (methodReturnType == null) {
+              methodReturnType = JavaPsiFacade.getElementFactory(methodReferenceExpression.getProject()).createType(((PsiMethod)resolve).getContainingClass(), subst);
+            }
+            if (!TypeConversionUtil.isAssignable(interfaceReturnType, methodReturnType, false)) return false;
+          }
         }
         if (areAcceptable(signature1, signature2, qualifierResolveResult.getContainingClass(), qualifierResolveResult.getSubstitutor(), ((PsiMethod)resolve).isVarArgs())) return true;
       } else if (resolve instanceof PsiClass) {
@@ -435,5 +444,20 @@ public class PsiMethodReferenceUtil {
     final QualifierResolveResult qualifierResolveResult = getQualifierResolveResult(methodRef);
     return method.getParameterList().getParametersCount() + 1 == parameterTypes.length &&
            hasReceiver(parameterTypes, qualifierResolveResult, methodRef);
+  }
+
+  public static String checkTypeArguments(PsiTypeElement qualifier, PsiType psiType) {
+    if (psiType instanceof PsiClassType) {
+      final PsiJavaCodeReferenceElement referenceElement = qualifier.getInnermostComponentReferenceElement();
+      if (referenceElement != null) {
+        PsiType[] typeParameters = referenceElement.getTypeParameters();
+        for (PsiType typeParameter : typeParameters) {
+          if (typeParameter instanceof PsiWildcardType) {
+            return "Unexpected wildcard";
+          }
+        }
+      }
+    }
+    return null;
   }
 }

@@ -15,8 +15,12 @@
  */
 package com.jetbrains.python;
 
+import com.google.common.collect.Lists;
 import com.intellij.codeInsight.completion.impl.CamelHumpMatcher;
+import com.intellij.codeInsight.lookup.AutoCompletionPolicy;
+import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupElement;
+import com.intellij.codeInsight.lookup.LookupElementBuilder;
 import com.jetbrains.python.documentation.DocStringFormat;
 import com.jetbrains.python.documentation.PyDocumentationSettings;
 import com.jetbrains.python.fixtures.PyTestCase;
@@ -80,10 +84,6 @@ public class PythonCompletionTest extends PyTestCase {
   }
 
   public void testPredefinedMethodNot() {
-    doTest();
-  }
-
-  public void testKeywordAfterComment() {  // PY-697
     doTest();
   }
 
@@ -228,14 +228,6 @@ public class PythonCompletionTest extends PyTestCase {
     doTest();
   }
 
-  public void testEmptyFile() {  // PY-1845
-    myFixture.configureByText(PythonFileType.INSTANCE, "");
-    myFixture.completeBasic();
-    final List<String> elements = myFixture.getLookupElementStrings();
-    assertNotNull(elements);
-    assertTrue(elements.contains("import"));
-  }
-
   public void testImportItself() {  // PY-1895
     myFixture.copyDirectoryToProject("completion/importItself/package1", "package1");
     myFixture.configureFromTempProjectFile("package1/submodule1.py");
@@ -275,14 +267,6 @@ public class PythonCompletionTest extends PyTestCase {
     doTest();
   }
 
-  public void testNonlocal() {  // PY-2289
-    doTest3K();
-  }
-
-  public void testYield() {
-    doTest();
-  }
-
   private void doTest3K() {
     PythonLanguageLevelPusher.setForcedLanguageLevel(myFixture.getProject(), LanguageLevel.PYTHON30);
     try {
@@ -297,55 +281,6 @@ public class PythonCompletionTest extends PyTestCase {
     doTest();
   }
 
-  public void testElse() {
-    doTest();
-  }
-
-  public void testElseNotIndented() {
-    doTest();
-  }
-
-  public void testElseInTryNotIndented() {
-    doTest();
-  }
-
-  public void testElif() {
-    doTest();
-  }
-
-  public void testElifNotIndented() {
-    doTest();
-  }
-
-  public void testExcept() {
-    doTest();
-  }
-
-  public void testExceptNotIndented() {
-    doTest();
-  }
-
-  public void testFinallyInExcept() {
-    doTest();
-  }
-
-  public void testContinue() {
-    doTest();
-  }
-
-  public void testNoContinueInFinally() {
-    final String testName = "completion/" + getTestName(true);
-    myFixture.configureByFile(testName + ".py");
-    myFixture.completeBasic();
-    final List<String> lookupElementStrings = myFixture.getLookupElementStrings();
-    assertNotNull(lookupElementStrings);
-    assertFalse(lookupElementStrings.contains("continue"));
-  }
-
-  public void testElseInCondExpr() {  // PY-2397
-    doTest();
-  }
-
   public void testLocalVarInDictKey() {  // PY-2558
     doTest();
   }
@@ -356,10 +291,6 @@ public class PythonCompletionTest extends PyTestCase {
 
   public void testDictKeyPrefix2() {      //PY-3683
     doTest();
-  }
-
-  public void testFromDotImport() {  // PY-2772
-    doTest3K();
   }
 
   public void testNoIdentifiersInImport() {
@@ -398,10 +329,6 @@ public class PythonCompletionTest extends PyTestCase {
 
   public void testImportInMiddleOfHierarchy() {  // PY-3016
     doMultiFileTest();
-  }
-
-  public void testLambdaInExpression() {  // PY-3150
-    doTest();
   }
 
   public void testVeryPrivate() {  // PY-3246
@@ -463,12 +390,10 @@ public class PythonCompletionTest extends PyTestCase {
     final PyDocumentationSettings settings = PyDocumentationSettings.getInstance(myFixture.getModule());
     settings.setFormat(DocStringFormat.PLAIN);
     myFixture.configureByFile("completion/identifiersInPlainDocstring.py");
-    myFixture.completeBasic();
-    myFixture.checkResultByFile("completion/identifiersInPlainDocstring.after.py");
-  }
-
-  public void testNoneInArgList() {  // PY-3464
-    doTest3K();
+    final LookupElement[] elements = myFixture.completeBasic();
+    assertNotNull(elements);
+    assertContainsElements(Lists.newArrayList(elements),
+                           LookupElementBuilder.create("bar").withAutoCompletionPolicy(AutoCompletionPolicy.NEVER_AUTOCOMPLETE));
   }
 
   public void testPep328Completion() {  // PY-3409
@@ -525,11 +450,6 @@ public class PythonCompletionTest extends PyTestCase {
   }
 
   public void testSuperInit() {  // PY-5066
-    doTest();
-  }
-
-  // PY-5144
-  public void testImportKeyword() {
     doTest();
   }
 
@@ -624,24 +544,6 @@ public class PythonCompletionTest extends PyTestCase {
     doTest();
   }
 
-  public void testAsInWith() {  // PY-3701
-    setLanguageLevel(LanguageLevel.PYTHON27);
-    assertTrue(doTestByText("with open(foo) <caret>").contains("as"));
-  }
-
-  public void testAsInExcept() {  // PY-1846
-    setLanguageLevel(LanguageLevel.PYTHON27);
-    assertTrue(doTestByText("try:\n" +
-                            "    pass\n" +
-                            "except IOError <caret>").contains("as"));
-  }
-
-  public void testElseInFor() {  // PY-6755
-    assertTrue(doTestByText("for item in range(10):\n" +
-                            "    pass\n" +
-                            "el<caret>").contains("else"));
-  }
-
   public void testArgs() {  // PY-7208
     doTestByText("def foo(*<caret>)");
     myFixture.checkResult("def foo(*args)");
@@ -686,5 +588,22 @@ public class PythonCompletionTest extends PyTestCase {
                                               "\n" +
                                               "f('foo').<caret>\n");
     assertTrue(results.contains("lower"));
+  }
+
+  public void testOverwriteEqualsSign() {  // PY-1337
+    doTestByText("def foo(school=None, kiga=None): pass\n" +
+                 "foo(<caret>school=None)");
+    myFixture.type("sch");
+    myFixture.finishLookup(Lookup.REPLACE_SELECT_CHAR);
+    myFixture.checkResult("def foo(school=None, kiga=None): pass\n" +
+                          "foo(school=None)");
+  }
+
+  public void testOverwriteBracket() {  // PY-6095
+    doTestByText("bar = {'a': '1'}\n" +
+                 "print ba<caret>['a']");
+    myFixture.finishLookup(Lookup.REPLACE_SELECT_CHAR);
+    myFixture.checkResult("bar = {'a': '1'}\n" +
+                          "print bar<caret>['a']");
   }
 }

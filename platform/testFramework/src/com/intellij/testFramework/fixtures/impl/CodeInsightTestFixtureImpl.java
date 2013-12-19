@@ -51,6 +51,7 @@ import com.intellij.injected.editor.DocumentWindow;
 import com.intellij.injected.editor.EditorWindow;
 import com.intellij.internal.DumpLookupElementWeights;
 import com.intellij.lang.LanguageStructureViewBuilder;
+import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
@@ -395,12 +396,12 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
 
   @Override
   public long checkHighlighting() {
-    return checkHighlighting(true, true, true);
+    return checkHighlighting(true, false, true);
   }
 
   @Override
   public long testHighlighting(final String... filePaths) {
-    return testHighlighting(true, true, true, filePaths);
+    return testHighlighting(true, false, true, filePaths);
   }
 
   @Override
@@ -512,8 +513,10 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     List<HighlightInfo> infos = doHighlighting();
     ArrayList<IntentionAction> actions = new ArrayList<IntentionAction>();
     for (HighlightInfo info : infos) {
-      for (Pair<HighlightInfo.IntentionActionDescriptor, TextRange> pair : info.quickFixActionRanges) {
-        actions.add(pair.getFirst().getAction());
+      if (info.quickFixActionRanges != null) {
+        for (Pair<HighlightInfo.IntentionActionDescriptor, TextRange> pair : info.quickFixActionRanges) {
+          actions.add(pair.getFirst().getAction());
+        }
       }
     }
     return actions;
@@ -664,13 +667,17 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   @NotNull
   public PsiElement getElementAtCaret() {
     assertInitialized();
-    final PsiElement element = TargetElementUtilBase.findTargetElement(getCompletionEditor(),
-                                                                       TargetElementUtilBase.REFERENCED_ELEMENT_ACCEPTED |
-                                                                       TargetElementUtilBase.ELEMENT_NAME_ACCEPTED);
-    assert element != null : "element not found in file " +
-                             myFile.getName() +
-                             " at caret position, offset " +
-                             myEditor.getCaretModel().getOffset() + "\"" +
+    Editor editor = getCompletionEditor();
+    int findTargetFlags = TargetElementUtilBase.REFERENCED_ELEMENT_ACCEPTED | TargetElementUtilBase.ELEMENT_NAME_ACCEPTED;
+    PsiElement element = TargetElementUtilBase.findTargetElement(editor, findTargetFlags);
+    
+    // if no references found in injected fragment, try outer document
+    if (element == null && editor instanceof EditorWindow) {
+      element = TargetElementUtilBase.findTargetElement(((EditorWindow)editor).getDelegate(), findTargetFlags);
+    }
+    
+    assert element != null : "element not found in file " + myFile.getName() +
+                             " at caret position, offset " + myEditor.getCaretModel().getOffset() + "\"" +
                              " psi structure: " + DebugUtil.psiToString(myFile, true, true);
     return element;
   }
@@ -775,22 +782,27 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   private boolean _performEditorAction(String actionId) {
     final DataContext dataContext = getEditorDataContext();
 
-    ActionManagerEx managerEx = ActionManagerEx.getInstanceEx();
-    AnAction action = managerEx.getAction(actionId);
-    AnActionEvent event = new AnActionEvent(null, dataContext, ActionPlaces.UNKNOWN, new Presentation(), managerEx, 0);
+    final ActionManagerEx managerEx = ActionManagerEx.getInstanceEx();
+    final AnAction action = managerEx.getAction(actionId);
+    final AnActionEvent event = new AnActionEvent(null, dataContext, ActionPlaces.UNKNOWN, new Presentation(), managerEx, 0);
 
-    action.update(event);
+    return WriteCommandAction.runWriteCommandAction(getProject(), new Computable<Boolean>() {
+      @Override
+      public Boolean compute() {
+        action.update(event);
 
-    if (!event.getPresentation().isEnabled()) {
-      return false;
-    }
+        if (!event.getPresentation().isEnabled()) {
+          return false;
+        }
 
-    managerEx.fireBeforeActionPerformed(action, dataContext, event);
+        managerEx.fireBeforeActionPerformed(action, dataContext, event);
 
-    action.actionPerformed(event);
+        action.actionPerformed(event);
 
-    managerEx.fireAfterActionPerformed(action, dataContext, event);
-    return true;
+        managerEx.fireAfterActionPerformed(action, dataContext, event);
+        return true;
+      }
+    });
   }
 
   @Override
@@ -1434,17 +1446,17 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
 
     List<HighlightInfo> infos;
     final long start = System.currentTimeMillis();
-    try {
-      ((PsiManagerImpl)PsiManager.getInstance(project)).setAssertOnFileLoadingFilter(myJavaFilesFilter);
+    ((PsiManagerImpl)PsiManager.getInstance(project)).setAssertOnFileLoadingFilter(myJavaFilesFilter, myTestRootDisposable);
 
-//    ProfilingUtil.startCPUProfiling();
+    //    ProfilingUtil.startCPUProfiling();
+    try {
       infos = doHighlighting();
       removeDuplicatedRangesForInjected(infos);
-//    ProfilingUtil.captureCPUSnapshot("testing");
     }
     finally {
-      ((PsiManagerImpl)PsiManager.getInstance(project)).setAssertOnFileLoadingFilter(VirtualFileFilter.NONE);
+      ((PsiManagerImpl)PsiManager.getInstance(project)).setAssertOnFileLoadingFilter(VirtualFileFilter.NONE, myTestRootDisposable);
     }
+    //    ProfilingUtil.captureCPUSnapshot("testing");
     final long elapsed = System.currentTimeMillis() - start;
 
     data.checkResult(infos, file.getText());
@@ -1487,6 +1499,17 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
       file = InjectedLanguageUtil.getTopLevelFile(file);
     }
     return instantiateAndRun(file, editor, ArrayUtil.EMPTY_INT_ARRAY, myAllowDirt);
+  }
+
+  @NotNull
+  @Override
+  public List<HighlightInfo> doHighlighting(final HighlightSeverity minimalSeverity) {
+    return ContainerUtil.filter(doHighlighting(), new Condition<HighlightInfo>() {
+      @Override
+      public boolean value(HighlightInfo info) {
+        return info.getSeverity().compareTo(minimalSeverity) >= 0;
+      }
+    });
   }
 
   @NotNull
@@ -1917,6 +1940,9 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     final List<String> actual = strings.subList(0, Math.min(expected.length, strings.size()));
     if (!actual.equals(Arrays.asList(expected))) {
       UsefulTestCase.assertOrderedEquals(DumpLookupElementWeights.getLookupElementWeights(lookup), expected);
+    }
+    if (selected != list.getSelectedIndex()) {
+      System.out.println(DumpLookupElementWeights.getLookupElementWeights(lookup));
     }
     Assert.assertEquals(selected, list.getSelectedIndex());
   }

@@ -307,7 +307,8 @@ public class ExpectedTypesProvider {
       if (type == null) return;
       final ExpectedTypeInfoImpl info = createInfoImpl(type, ExpectedTypeInfo.TYPE_OR_SUBTYPE, type, TailType.UNKNOWN);
       if (type instanceof PsiArrayType) {
-        myResult = new ExpectedTypeInfo[]{info, createInfoImpl(((PsiArrayType)type).getComponentType(), ExpectedTypeInfo.TYPE_OR_SUBTYPE, type, TailType.UNKNOWN)};
+        PsiType componentType = ((PsiArrayType)type).getComponentType();
+        myResult = new ExpectedTypeInfo[]{info, createInfoImpl(componentType, ExpectedTypeInfo.TYPE_OR_SUBTYPE, componentType, TailType.UNKNOWN)};
       }
       else {
         myResult = new ExpectedTypeInfo[] {info};
@@ -630,9 +631,15 @@ public class ExpectedTypesProvider {
         myResult = visitor.getResult();
         if (!(expr.getParent() instanceof PsiExpressionList)) {
           for (int i = 0; i < myResult.length; i++) {
-            ExpectedTypeInfo info = myResult[i];
+            final ExpectedTypeInfo info = myResult[i];
             myResult[i] = createInfoImpl(info.getType(), info.getKind(), info.getDefaultType(), TailType.NONE, info.getCalledMethod(),
-                                         ((ExpectedTypeInfoImpl)info).getExpectedName());
+                                         new NullableComputable<String>() {
+                                           @Nullable
+                                           @Override
+                                           public String compute() {
+                                             return ((ExpectedTypeInfoImpl)info).getExpectedName();
+                                           }
+                                         });
           }
         }
         return;
@@ -870,9 +877,15 @@ public class ExpectedTypesProvider {
       else if (myExpr.equals(expr.getThenExpression())) {
         ExpectedTypeInfo[] types = getExpectedTypes(expr, myForCompletion);
         for (int i = 0; i < types.length; i++) {
-          ExpectedTypeInfo info = types[i];
+          final ExpectedTypeInfo info = types[i];
           types[i] = createInfoImpl(info.getType(), info.getKind(), info.getDefaultType(), TailType.COND_EXPR_COLON, info.getCalledMethod(),
-                                    ((ExpectedTypeInfoImpl)info).getExpectedName());
+                                    new NullableComputable<String>() {
+                                      @Nullable
+                                      @Override
+                                      public String compute() {
+                                        return ((ExpectedTypeInfoImpl)info).getExpectedName();
+                                      }
+                                    });
         }
         myResult = types;
       }

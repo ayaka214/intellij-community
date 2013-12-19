@@ -44,26 +44,26 @@ import java.util.List;
 /**
  * @author Max Medvedev
  */
-public class GrIntroduceLocalVariableProcessor {
+public abstract class GrIntroduceLocalVariableProcessor {
   private static final Logger LOG = Logger.getInstance(GrIntroduceLocalVariableProcessor.class);
 
   private final GrIntroduceContext myContext;
   private final GroovyIntroduceVariableSettings mySettings;
+  private final boolean myProcessUsages;
   private final PsiElement[] myOccurrences;
   private GrExpression myExpression;
-  private final GrIntroduceVariableHandler myHandler;
 
   public GrIntroduceLocalVariableProcessor(@NotNull GrIntroduceContext context,
                                            @NotNull GroovyIntroduceVariableSettings settings,
                                            @NotNull PsiElement[] occurrences,
                                            @NotNull GrExpression expression,
-                                           @NotNull GrIntroduceVariableHandler handler) {
+                                           boolean processUsages) {
 
     myContext = context;
     mySettings = settings;
+    myProcessUsages = processUsages;
     myOccurrences = settings.replaceAllOccurrences() ? occurrences : new PsiElement[]{expression};
     myExpression = expression;
-    myHandler = handler;
   }
 
   @NotNull
@@ -73,18 +73,16 @@ public class GrIntroduceLocalVariableProcessor {
     preprocessOccurrences();
 
     int expressionIndex = ArrayUtilRt.find(myOccurrences, myExpression);
-    final PsiElement[] replaced = processOccurrences();
+    final PsiElement[] replaced = myProcessUsages ? processOccurrences() : myOccurrences;
     PsiElement replacedExpression = replaced[expressionIndex];
-    GrStatement anchor = getAnchor(replaced, replacedExpression);
+    GrStatement anchor = GrIntroduceHandlerBase.getAnchor(replaced, myContext.getScope());
 
     RefactoringUtil.highlightAllOccurrences(myContext.getProject(), replaced, myContext.getEditor());
 
     return insertVariableDefinition(declaration, anchor, replacedExpression);
   }
 
-  private void refreshPositionMarker(PsiElement e) {
-    myHandler.refreshPositionMarker(myContext.getEditor().getDocument().createRangeMarker(e.getTextRange()));
-  }
+  protected abstract void refreshPositionMarker(PsiElement e);
 
   private static boolean isControlStatementBranch(GrStatement statement) {
     return statement.getParent() instanceof GrLoopStatement && statement == ((GrLoopStatement)statement.getParent()).getBody() ||
@@ -103,8 +101,6 @@ public class GrIntroduceLocalVariableProcessor {
       if (!(occurrence instanceof GrExpression)) {
         throw new IncorrectOperationException("Expression occurrence to be replaced is not instance of GroovyPsiElement");
       }
-
-      boolean isOriginal = myExpression == occurrence;
 
       final GrExpression replaced = ((GrExpression)occurrence).replaceWithExpression(templateRef, true);
       result.add(replaced);
@@ -153,34 +149,14 @@ public class GrIntroduceLocalVariableProcessor {
       expression.delete();
     }
 
-    boolean isInsideLoop = isControlStatementBranch(anchor);
-    if (isInsideLoop) {
+    boolean isInsideControlStatement = isControlStatementBranch(anchor);
+    if (isInsideControlStatement) {
       anchor = insertBraces(anchor);
     }
 
     LOG.assertTrue(myOccurrences.length > 0);
 
-    declaration = doInsertDefinition(declaration, anchor, deleteExpression, anchorEqualsExpression);
-
-    final GrVariable variable = declaration.getVariables()[0];
-    JavaCodeStyleManager.getInstance(declaration.getProject()).shortenClassReferences(declaration);
-
-
-    PsiElement markerPlace = deleteExpression ? variable :
-                             isInsideLoop     ? declaration.getParent()
-                                              : expression;
-    refreshPositionMarker(markerPlace);
-
-    return variable;
-  }
-
-  private GrVariableDeclaration doInsertDefinition(GrVariableDeclaration declaration,
-                                                   GrStatement anchor,
-                                                   boolean deleteExpression,
-                                                   boolean anchorEqualsExpression) {
-    PsiElement realContainer = anchor.getParent();
-
-    GrStatementOwner block = (GrStatementOwner)realContainer;
+    GrStatementOwner block = (GrStatementOwner)anchor.getParent();
 
     if (deleteExpression && anchorEqualsExpression) {
       declaration = (GrVariableDeclaration)anchor.replace(declaration);
@@ -188,28 +164,31 @@ public class GrIntroduceLocalVariableProcessor {
     else {
       declaration = (GrVariableDeclaration)block.addStatementBefore(declaration, anchor);
     }
-    return declaration;
+
+    final GrVariable variable = declaration.getVariables()[0];
+    JavaCodeStyleManager.getInstance(declaration.getProject()).shortenClassReferences(declaration);
+
+
+    PsiElement markerPlace = deleteExpression         ? variable :
+                             isInsideControlStatement ? declaration.getParent()
+                                                      : expression;
+    refreshPositionMarker(markerPlace);
+
+    return variable;
   }
 
-  private GrStatement insertBraces(GrStatement anchor) {
-    GrBlockStatement blockStatement = GroovyPsiElementFactory.getInstance(myContext.getProject()).createBlockStatement();
+  @NotNull
+  static GrStatement insertBraces(@NotNull GrStatement anchor) {
+    GrBlockStatement blockStatement = GroovyPsiElementFactory.getInstance(anchor.getProject()).createBlockStatement();
 
     blockStatement.getBlock().addStatementBefore(anchor, null);
     GrBlockStatement newBlockStatement = ((GrBlockStatement)anchor.replace(blockStatement));
-    anchor = newBlockStatement.getBlock().getStatements()[0];
-    return anchor;
+    return newBlockStatement.getBlock().getStatements()[0];
   }
 
   private static boolean isSingleGStringInjectionExpr(PsiElement expression) {
     PsiElement parent = expression.getParent();
     return parent instanceof GrClosableBlock && parent.getParent() instanceof GrStringInjection;
-  }
-
-  @NotNull
-  private GrStatement getAnchor(PsiElement[] replaced, PsiElement replacedExpression) {
-    PsiElement anchor = GrIntroduceHandlerBase.findAnchor(replaced, GroovyRefactoringUtil.getEnclosingContainer(replacedExpression));
-    GrIntroduceHandlerBase.assertStatement(anchor, myOccurrences, myContext.getScope());
-    return (GrStatement)anchor;
   }
 
   @Nullable

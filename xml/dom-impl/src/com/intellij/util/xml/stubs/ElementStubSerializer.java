@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2012 JetBrains s.r.o.
+ * Copyright 2000-2013 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,13 @@
  */
 package com.intellij.util.xml.stubs;
 
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.stubs.IndexSink;
 import com.intellij.psi.stubs.ObjectStubSerializer;
 import com.intellij.psi.stubs.StubInputStream;
 import com.intellij.psi.stubs.StubOutputStream;
+import com.intellij.util.xml.stubs.index.DomElementClassIndex;
+import com.intellij.util.xml.stubs.index.DomNamespaceKeyIndex;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -35,17 +38,27 @@ public class ElementStubSerializer implements ObjectStubSerializer<ElementStub, 
   public void serialize(@NotNull ElementStub stub, @NotNull StubOutputStream dataStream) throws IOException {
     dataStream.writeName(stub.getName());
     dataStream.writeName(stub.getNamespaceKey());
+    dataStream.writeInt(stub.getIndex());
     dataStream.writeBoolean(stub.isCustom());
   }
 
   @NotNull
   @Override
   public ElementStub deserialize(@NotNull StubInputStream dataStream, ElementStub parentStub) throws IOException {
-    return new ElementStub(parentStub, dataStream.readName(), dataStream.readName(), dataStream.readBoolean());
+    return new ElementStub(parentStub, dataStream.readName(), dataStream.readName(), dataStream.readInt(), dataStream.readBoolean());
   }
 
   @Override
   public void indexStub(@NotNull ElementStub stub, @NotNull IndexSink sink) {
+    final String namespaceKey = stub.getNamespaceKey();
+    if (StringUtil.isNotEmpty(namespaceKey)) {
+      sink.occurrence(DomNamespaceKeyIndex.KEY, namespaceKey);
+    }
+
+    final Class elementClass = stub.getElementClass();
+    if (elementClass != null) {
+      sink.occurrence(DomElementClassIndex.KEY, elementClass.getName());
+    }
   }
 
   @NotNull

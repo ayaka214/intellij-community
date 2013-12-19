@@ -91,6 +91,7 @@ import org.jetbrains.plugins.groovy.lang.psi.impl.signatures.GrClosureSignatureU
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.TypesUtil;
 import org.jetbrains.plugins.groovy.lang.psi.impl.synthetic.GroovyScriptClass;
 import org.jetbrains.plugins.groovy.lang.psi.util.GrStringUtil;
+import org.jetbrains.plugins.groovy.lang.psi.util.GroovyPropertyUtils;
 import org.jetbrains.plugins.groovy.lang.psi.util.PsiUtil;
 import org.jetbrains.plugins.groovy.lang.resolve.ResolveUtil;
 import org.jetbrains.plugins.groovy.lang.resolve.ast.GrInheritConstructorContributor;
@@ -398,7 +399,9 @@ public class GroovyAnnotator extends GroovyElementVisitor {
   private static void checkSameNameMethodsWithDifferentAccessModifiers(AnnotationHolder holder, GrMethod[] methods) {
     MultiMap<String, GrMethod> map = MultiMap.create();
     for (GrMethod method : methods) {
-      map.putValue(method.getName(), method);
+      if (!method.isConstructor()) {
+        map.putValue(method.getName(), method);
+      }
     }
 
     for (Map.Entry<String, Collection<GrMethod>> entry : map.entrySet()) {
@@ -550,6 +553,9 @@ public class GroovyAnnotator extends GroovyElementVisitor {
     checkInnerMethod(myHolder, method);
     checkOptionalParametersInAbstractMethod(myHolder, method);
 
+    checkConstructorOfImmutableClass(myHolder, method);
+    checkGetterOfImmutable(myHolder, method);
+
     final PsiElement nameIdentifier = method.getNameIdentifierGroovy();
     if (nameIdentifier.getNode().getElementType() == GroovyTokenTypes.mSTRING_LITERAL) {
       checkStringLiteral(nameIdentifier);
@@ -578,6 +584,43 @@ public class GroovyAnnotator extends GroovyElementVisitor {
     }
 
     checkOverridingMethod(myHolder, method);
+  }
+
+  private void checkGetterOfImmutable(AnnotationHolder holder, GrMethod method) {
+    if (!GroovyPropertyUtils.isSimplePropertyGetter(method)) return;
+
+    PsiClass aClass = method.getContainingClass();
+    if (aClass == null) return;
+
+    PsiModifierList aClassModifierList = aClass.getModifierList();
+    if (aClassModifierList == null) return;
+
+    if (!PsiImplUtil.hasImmutableAnnotation(aClassModifierList)) return;
+
+
+    PsiField field = GroovyPropertyUtils.findFieldForAccessor(method, false);
+    if (field == null || !(field instanceof GrField)) return;
+
+    GrModifierList fieldModifierList = ((GrField)field).getModifierList();
+    if (fieldModifierList == null) return;
+
+    if (fieldModifierList.hasExplicitVisibilityModifiers()) return;
+
+    holder.createErrorAnnotation(method.getNameIdentifierGroovy(), GroovyBundle.message("repetitive.method.name.0", method.getName()));
+  }
+
+  private static void checkConstructorOfImmutableClass(AnnotationHolder holder, GrMethod method) {
+    if (!method.isConstructor()) return;
+
+    PsiClass aClass = method.getContainingClass();
+    if (aClass == null) return;
+
+    PsiModifierList modifierList = aClass.getModifierList();
+    if (modifierList == null) return;
+
+    if (!PsiImplUtil.hasImmutableAnnotation(modifierList)) return;
+
+    holder.createErrorAnnotation(method.getNameIdentifierGroovy(), GroovyBundle.message("explicit.constructors.are.not.allowed.in.immutable.class"));
   }
 
   private static void checkOverridingMethod(@NotNull AnnotationHolder holder, @NotNull GrMethod method) {
@@ -1457,11 +1500,14 @@ public class GroovyAnnotator extends GroovyElementVisitor {
     }
 
     final GrAnnotationMemberValue value = nameValuePair.getValue();
-
-    checkAnnotationAttributeValue(value, value);
+    if (value != null) {
+      checkAnnotationAttributeValue(value, value);
+    }
   }
 
-  private boolean checkAnnotationAttributeValue(GrAnnotationMemberValue value, PsiElement toHighlight) {
+  private boolean checkAnnotationAttributeValue(@Nullable GrAnnotationMemberValue value, @NotNull PsiElement toHighlight) {
+    if (value == null) return false;
+
     if (value instanceof GrLiteral) return false;
     if (value instanceof GrClosableBlock) return false;
     if (value instanceof GrAnnotation) return false;
@@ -1500,6 +1546,12 @@ public class GroovyAnnotator extends GroovyElementVisitor {
         if (checkAnnotationAttributeValue(expression, toHighlight)) return true;
       }
       return false;
+    }
+    if (value instanceof GrUnaryExpression) {
+      final IElementType tokenType = ((GrUnaryExpression)value).getOperationTokenType();
+      if (tokenType == GroovyTokenTypes.mMINUS || tokenType == GroovyTokenTypes.mPLUS) {
+        return checkAnnotationAttributeValue(((GrUnaryExpression)value).getOperand(), toHighlight);
+      }
     }
 
     myHolder.createErrorAnnotation(toHighlight, GroovyBundle.message("expected.0.to.be.inline.constant", value.getText()));

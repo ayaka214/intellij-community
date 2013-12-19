@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2012 JetBrains s.r.o.
+ * Copyright 2000-2013 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -179,7 +179,15 @@ public class TypeConversionUtil {
       }
       return false;
     }
-    else if (toType instanceof PsiIntersectionType) return false;
+    else if (toType instanceof PsiIntersectionType) {
+      if (fromType instanceof PsiClassType && ((PsiClassType)fromType).getLanguageLevel().isAtLeast(LanguageLevel.JDK_1_8)) {
+        for (PsiType conjunct : ((PsiIntersectionType)toType).getConjuncts()) {
+          if (!isNarrowingReferenceConversionAllowed(fromType, conjunct)) return false;
+        }
+        return true;
+      }
+      return false;
+    }
 
     if (fromType instanceof PsiDisjunctionType) {
       return isNarrowingReferenceConversionAllowed(((PsiDisjunctionType)fromType).getLeastUpperBound(), toType);
@@ -950,6 +958,7 @@ public class TypeConversionUtil {
         else { //isSuper
           if (rightWildcard.isSuper()) {
             final Boolean assignable = ourGuard.doPreventingRecursion(rightWildcard, true, new NotNullComputable<Boolean>() {
+              @NotNull
               @Override
               public Boolean compute() {
                 return isAssignable(rightWildcard.getBound(), leftBound, allowUncheckedConversion);
@@ -984,16 +993,8 @@ public class TypeConversionUtil {
     }
   }
 
-  private static boolean containsWildcards(@NotNull PsiType leftBound) {
-    final WildcardDetector wildcardDetector = new WildcardDetector();
-    if (leftBound instanceof PsiIntersectionType) {
-      for (PsiType conjunctType :((PsiIntersectionType)leftBound).getConjuncts()) {
-        if (!conjunctType.accept(wildcardDetector)) return false;
-      }
-      return true;
-    }
-
-    return leftBound.accept(wildcardDetector);
+  public static boolean containsWildcards(@NotNull PsiType leftBound) {
+    return leftBound.accept(new WildcardDetector());
   }
 
   @Nullable
@@ -1022,7 +1023,7 @@ public class TypeConversionUtil {
    * <code>InheritanceUtil.isInheritor(derivedClass, superClass, true)</code>
    *
    * @return substitutor (never returns <code>null</code>)
-   * @see InheritanceUtil#isInheritor(PsiClass, PsiClass, boolean)
+   * @see PsiClass#isInheritor(PsiClass, PsiClass, boolean)
    */
   @NotNull
   public static PsiSubstitutor getSuperClassSubstitutor(@NotNull PsiClass superClass,
@@ -1837,9 +1838,17 @@ public class TypeConversionUtil {
       return arrayType.getComponentType().accept(this);
     }
 
+    @Nullable
+    @Override
+    public Boolean visitIntersectionType(PsiIntersectionType intersectionType) {
+      for (PsiType psiType : intersectionType.getConjuncts()) {
+        if (psiType.accept(this)) return true;
+      }
+      return false;
+    }
+
     @Override
     public Boolean visitType(PsiType type) {
-      //todo intersection types
       return false;
     }
   }

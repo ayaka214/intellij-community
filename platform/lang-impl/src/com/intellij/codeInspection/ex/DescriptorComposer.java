@@ -24,9 +24,11 @@ import com.intellij.injected.editor.VirtualFileWindow;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.util.text.CharArrayUtil;
+import com.intellij.xml.util.XmlStringUtil;
 import org.jetbrains.annotations.NotNull;
 
 import java.net.MalformedURLException;
@@ -80,11 +82,15 @@ public class DescriptorComposer extends HTMLComposerImpl {
     }
     List<String> texts = new ArrayList<String>();
     for (QuickFixAction quickFix : quickFixes) {
-      final String text = quickFix.getText(where);
+      String text = quickFix.getText(where);
       if (text == null) continue;
-      texts.add(text);
+      texts.add(escapeQuickFixText(text));
     }
     return texts.toArray(new String[texts.size()]);
+  }
+
+  private static String escapeQuickFixText(String text) {
+    return XmlStringUtil.isWrappedInHtml(text) ? XmlStringUtil.stripHtml(text) : StringUtil.escapeXml(text);
   }
 
   protected void composeAdditionalDescription(@NotNull StringBuffer buf, @NotNull RefEntity refEntity) {}
@@ -131,7 +137,7 @@ public class DescriptorComposer extends HTMLComposerImpl {
         //noinspection HardCodedStringLiteral
         buf.append("<a HREF=\"file://bred.txt#invokelocal:" + (idx++));
         buf.append("\">");
-        buf.append(fix.getName());
+        buf.append(escapeQuickFixText(fix.getName()));
         //noinspection HardCodedStringLiteral
         buf.append("</a>");
         //noinspection HardCodedStringLiteral
@@ -178,7 +184,7 @@ public class DescriptorComposer extends HTMLComposerImpl {
       anchor.append("</font>");
     }
 
-    String descriptionTemplate = description.getDescriptionTemplate();
+    String descriptionTemplate = XmlStringUtil.stripHtml(description.getDescriptionTemplate());
     //noinspection HardCodedStringLiteral
     final String reference = "#ref";
     final boolean containsReference = descriptionTemplate.contains(reference);
@@ -211,7 +217,7 @@ public class DescriptorComposer extends HTMLComposerImpl {
       }
       res = res.replaceAll(location, lineAnchor.toString());
     }
-    buf.append(res);
+    buf.append(res.replace("#end", "").replace("#treeend",""));
     buf.append(BR).append(BR);
     composeAdditionalDescription(buf, refElement);
   }

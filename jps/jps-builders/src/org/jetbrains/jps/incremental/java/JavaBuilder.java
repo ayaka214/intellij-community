@@ -25,6 +25,7 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.concurrency.SequentialTaskExecutor;
+import com.intellij.util.io.PersistentEnumeratorBase;
 import gnu.trove.THashMap;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
@@ -59,7 +60,8 @@ import org.jetbrains.jps.model.module.JpsModule;
 import org.jetbrains.jps.model.module.JpsModuleType;
 import org.jetbrains.jps.service.JpsServiceManager;
 
-import javax.tools.*;
+import javax.tools.Diagnostic;
+import javax.tools.JavaFileObject;
 import java.io.*;
 import java.net.ServerSocket;
 import java.util.*;
@@ -190,6 +192,9 @@ public class JavaBuilder extends ModuleLevelBuilder {
       return compile(context, chunk, dirtyFilesHolder, filesToCompile, outputConsumer);
     }
     catch (ProjectBuildException e) {
+      throw e;
+    }
+    catch (PersistentEnumeratorBase.CorruptedException e) {
       throw e;
     }
     catch (Exception e) {
@@ -904,18 +909,20 @@ public class JavaBuilder extends ModuleLevelBuilder {
     }
 
     public void save(@NotNull final OutputFileObject fileObject) {
-      if (JavaFileObject.Kind.CLASS != fileObject.getKind()) {
-        // generated sources or resources must be saved synchronously, because some compilers (e.g. eclipse)
-        // may want to read generated text for further compilation
-        try {
-          final BinaryContent content = fileObject.getContent();
-          if (content != null) {
-            content.saveToFile(fileObject.getFile());
-          }
+      // generated files must be saved synchronously, because some compilers (e.g. eclipse)
+      // may want to read them for further compilation
+      try {
+        final BinaryContent content = fileObject.getContent();
+        final File file = fileObject.getFile();
+        if (content != null) {
+          content.saveToFile(file);
         }
-        catch (IOException e) {
-          myContext.processMessage(new CompilerMessage(BUILDER_NAME, BuildMessage.Kind.ERROR, e.getMessage()));
+        else {
+          myContext.processMessage(new CompilerMessage(BUILDER_NAME, BuildMessage.Kind.WARNING, "Missing content for file " + file.getPath()));
         }
+      }
+      catch (IOException e) {
+        myContext.processMessage(new CompilerMessage(BUILDER_NAME, BuildMessage.Kind.ERROR, e.getMessage()));
       }
 
       submitAsyncTask(myContext, new Runnable() {

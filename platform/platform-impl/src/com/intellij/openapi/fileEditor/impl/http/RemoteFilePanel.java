@@ -31,7 +31,6 @@ import com.intellij.openapi.vfs.impl.http.FileDownloadingListener;
 import com.intellij.openapi.vfs.impl.http.HttpVirtualFile;
 import com.intellij.openapi.vfs.impl.http.RemoteFileInfo;
 import com.intellij.openapi.vfs.impl.http.RemoteFileState;
-import com.intellij.util.EventDispatcher;
 import com.intellij.util.net.HTTPProxySettingsDialog;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.update.MergingUpdateQueue;
@@ -44,13 +43,12 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 
 /**
  * @author nik
  */
-public class RemoteFilePanel implements PropertyChangeListener {
+public class RemoteFilePanel {
   private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.fileEditor.impl.http.RemoteFilePanel");
   @NonNls private static final String ERROR_CARD = "error";
   @NonNls private static final String DOWNLOADING_CARD = "downloading";
@@ -70,12 +68,13 @@ public class RemoteFilePanel implements PropertyChangeListener {
   private final HttpVirtualFile myVirtualFile;
   private final MergingUpdateQueue myProgressUpdatesQueue;
   private final MyDownloadingListener myDownloadingListener;
-  private final EventDispatcher<PropertyChangeListener> myDispatcher = EventDispatcher.create(PropertyChangeListener.class);
+  private final PropertyChangeListener myPropertyChangeListener;
   private @Nullable TextEditor myFileEditor;
 
-  public RemoteFilePanel(final Project project, final HttpVirtualFile virtualFile) {
+  public RemoteFilePanel(final Project project, final HttpVirtualFile virtualFile, @NotNull PropertyChangeListener propertyChangeListener) {
     myProject = project;
     myVirtualFile = virtualFile;
+    myPropertyChangeListener = propertyChangeListener;
     myErrorLabel.setIcon(AllIcons.RunConfigurations.ConfigurationWarning);
     myUrlTextField.setText(virtualFile.getUrl());
     myProgressUpdatesQueue = new MergingUpdateQueue("downloading progress updates", 300, false, myMainPanel);
@@ -137,7 +136,7 @@ public class RemoteFilePanel implements PropertyChangeListener {
       @Override
       public void run() {
         final TextEditor textEditor = (TextEditor)TextEditorProvider.getInstance().createEditor(myProject, myVirtualFile);
-        textEditor.addPropertyChangeListener(RemoteFilePanel.this);
+        textEditor.addPropertyChangeListener(myPropertyChangeListener);
         myEditorPanel.removeAll();
         myEditorPanel.add(textEditor.getComponent(), BorderLayout.CENTER);
         myFileEditor = textEditor;
@@ -186,19 +185,6 @@ public class RemoteFilePanel implements PropertyChangeListener {
     if (myFileEditor != null) {
       Disposer.dispose(myFileEditor);
     }
-  }
-
-  public void addPropertyChangeListener(PropertyChangeListener listener) {
-    myDispatcher.addListener(listener);
-  }
-
-  public void removePropertyChangeListener(PropertyChangeListener listener) {
-    myDispatcher.removeListener(listener);
-  }
-
-  @Override
-  public void propertyChange(PropertyChangeEvent evt) {
-    myDispatcher.getMulticaster().propertyChange(evt);
   }
 
   private class MyDownloadingListener implements FileDownloadingListener {
@@ -259,7 +245,7 @@ public class RemoteFilePanel implements PropertyChangeListener {
       myProgressUpdatesQueue.queue(new Update("fraction") {
         @Override
         public void run() {
-          myProgressBar.setValue((int)Math.round(100*fraction));
+          myProgressBar.setValue((int)Math.round(100 * fraction));
         }
       });
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2009 JetBrains s.r.o.
+ * Copyright 2000-2013 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,9 +59,7 @@ public class SmartPointerManagerImpl extends SmartPointerManager {
       if (pointers == null) return;
       PsiDocumentManager psiDocumentManager = PsiDocumentManager.getInstance(file.getProject());
 
-      //noinspection ForLoopReplaceableByForEach
-      for (int i = 0; i < pointers.size(); i++) {
-        SmartPointerEx pointer = pointers.get(i);
+      for (SmartPointerEx pointer : pointers) {
         if (pointer != null) {
           pointer.fastenBelt(offset, cachedRangeMarkers);
         }
@@ -90,9 +88,7 @@ public class SmartPointerManagerImpl extends SmartPointerManager {
       List<SmartPointerEx> pointers = getPointers(file);
       if (pointers == null) return;
 
-      //noinspection ForLoopReplaceableByForEach
-      for (int i = 0; i < pointers.size(); i++) {
-        SmartPointerEx pointer = pointers.get(i);
+      for (SmartPointerEx pointer : pointers) {
         if (pointer != null) {
           pointer.unfastenBelt(offset);
         }
@@ -143,7 +139,7 @@ public class SmartPointerManagerImpl extends SmartPointerManager {
 
   private static <E extends PsiElement> SmartPointerEx<E> getCachedPointer(@NotNull E element) {
     Reference<SmartPointerEx> data = element.getUserData(CACHED_SMART_POINTER_KEY);
-    SmartPointerEx cachedPointer = data == null ? null : data.get();
+    SmartPointerEx cachedPointer = SoftReference.dereference(data);
     if (cachedPointer != null) {
       PsiElement cachedElement = cachedPointer.getCachedElement();
       if (cachedElement != null && cachedElement != element) {
@@ -212,7 +208,7 @@ public class SmartPointerManagerImpl extends SmartPointerManager {
   public int getPointersNumber(@NotNull PsiFile containingFile) {
     synchronized (lock) {
       List<SmartPointerEx> pointers = getPointers(containingFile);
-      return pointers == null ? 0 : pointers.size();
+      return pointers == null ? 0 : ((UnsafeWeakList)pointers).toStrongList().size();
     }
   }
 

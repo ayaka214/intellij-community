@@ -236,7 +236,7 @@ public class ExpressionParsing extends Parsing {
           break;
         }
       }
-      myBuilder.advanceLexer();
+      checkMatches(PyTokenTypes.RBRACE, message("PARSE.expected.rbrace"));
       startMarker.done(PyElementTypes.DICT_LITERAL_EXPRESSION);
     }
   }
@@ -264,7 +264,7 @@ public class ExpressionParsing extends Parsing {
         break;
       }
     }
-    myBuilder.advanceLexer();
+    checkMatches(PyTokenTypes.RBRACE, message("PARSE.expected.rbrace"));
     startMarker.done(PyElementTypes.SET_LITERAL_EXPRESSION);
   }
 
@@ -772,6 +772,7 @@ public class ExpressionParsing extends Parsing {
       PsiBuilder.Marker starExpr = myBuilder.mark();
       nextToken();
       if (!parseBitwiseORExpression(isTargetExpression)) {
+        myBuilder.error(message("PARSE.expected.expression"));
         starExpr.drop();
         return false;
       }

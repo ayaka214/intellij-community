@@ -30,6 +30,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.JavaConstantExpressionEvaluator;
+import com.intellij.psi.impl.source.javadoc.PsiInlineDocTagImpl;
 import com.intellij.psi.impl.source.tree.JavaDocElementType;
 import com.intellij.psi.javadoc.PsiDocComment;
 import com.intellij.psi.javadoc.PsiDocTag;
@@ -409,7 +410,8 @@ public class JavaDocInfoGenerator {
   private static PsiDocComment getDocComment(final PsiDocCommentOwner docOwner) {
     PsiElement navElement = docOwner.getNavigationElement();
     if (!(navElement instanceof PsiDocCommentOwner)) {
-      throw new AssertionError("Wrong navElement: " + navElement + "; original = " + docOwner + " of class " + docOwner.getClass());
+      LOG.info("Wrong navElement: " + navElement + "; original = " + docOwner + " of class " + docOwner.getClass());
+      return null;
     }
     PsiDocComment comment = ((PsiDocCommentOwner)navElement).getDocComment();
     if (comment == null) { //check for non-normalized fields
@@ -1038,7 +1040,7 @@ public class JavaDocInfoGenerator {
           generateLinkValue(tag, buffer, false);
         }
         else if (tagName.equals(LITERAL_TAG)) {
-          generateLiteralValue(tag, buffer);
+          generateLiteralValue(buffer, ((PsiInlineDocTagImpl)tag).getDataElementsIgnoreWhitespaces());
         }
         else if (tagName.equals(CODE_TAG)) {
           generateCodeValue(tag, buffer);
@@ -1072,14 +1074,12 @@ public class JavaDocInfoGenerator {
   @SuppressWarnings({"HardCodedStringLiteral"})
   private static void generateCodeValue(PsiInlineDocTag tag, StringBuilder buffer) {
     buffer.append("<code>");
-    generateLiteralValue(tag, buffer);
+    generateLiteralValue(buffer, tag.getDataElements());
     buffer.append("</code>");
   }
 
-  private static void generateLiteralValue(PsiInlineDocTag tag, StringBuilder buffer) {
-    PsiElement[] elements = tag.getDataElements();
-
-    for (PsiElement element : elements) {
+  private static void generateLiteralValue(StringBuilder buffer, final PsiElement[] dataElements) {
+    for (PsiElement element : dataElements) {
       appendPlainText(element.getText(), buffer);
     }
   }
@@ -1488,6 +1488,7 @@ public class JavaDocInfoGenerator {
         if (!isAbstract) continue;
       }
       PsiClass superClass = superMethod.getContainingClass();
+      if (superClass == null) continue;
       if (!headerGenerated) {
         buffer.append("<DD><DL>");
         buffer.append("<DT><b>");
@@ -1661,7 +1662,7 @@ public class JavaDocInfoGenerator {
       return length;
     }
 
-    if (type instanceof PsiDisjunctionType) {
+    if (type instanceof PsiDisjunctionType || type instanceof PsiIntersectionType) {
       if (!generateLink) {
         final String text = StringUtil.escapeXml(type.getCanonicalText());
         buffer.append(text);
@@ -1669,9 +1670,17 @@ public class JavaDocInfoGenerator {
       }
       else {
         int length = 0;
-        for (PsiType psiType : ((PsiDisjunctionType)type).getDisjunctions()) {
+        final String separator = type instanceof PsiDisjunctionType ? " | " : " & ";
+        final List<PsiType> componentTypes;
+        if (type instanceof PsiIntersectionType) {
+          componentTypes = Arrays.asList(((PsiIntersectionType)type).getConjuncts());
+        }
+        else {
+          componentTypes = ((PsiDisjunctionType)type).getDisjunctions();
+        }
+        for (PsiType psiType : componentTypes) {
           if (length > 0) {
-            buffer.append(" | ");
+            buffer.append(separator);
             length += 3;
           }
           length += generateType(buffer, psiType, context, generateLink);

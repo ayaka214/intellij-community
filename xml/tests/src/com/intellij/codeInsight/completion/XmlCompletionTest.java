@@ -332,6 +332,12 @@ public class XmlCompletionTest extends LightCodeInsightFixtureTestCase {
     checkResultByFile(getTestName(true) + ".xml");
   }
 
+  public void testBeforeAttributeNameWithPrefix() throws Exception {
+    configureByFile(getTestName(true) + ".xml");
+    selectItem(myFixture.getLookupElements()[0], '\t');
+    checkResultByFile(getTestName(true) + "_after.xml");
+  }
+
   public void testUrlCompletionInDtd() throws Exception {
     configureByFile("20.xml");
     final PsiReference referenceAt = myFixture.getFile().findReferenceAt(myFixture.getEditor().getCaretModel().getOffset() - 1);
@@ -669,6 +675,10 @@ public class XmlCompletionTest extends LightCodeInsightFixtureTestCase {
   public void testSubstitute() throws Exception {
     myFixture.configureByFiles("Substitute/schema-a.xsd", "Substitute/schema-b.xsd");
     myFixture.testCompletionVariants("Substitute/test.xml", "b:instance", "instance");
+  }
+
+  public void testAfterPrefix() throws Exception {
+    myFixture.testCompletion("Substitute/testAfterPrefix.xml", "Substitute/testAfterPrefix_after.xml", "Substitute/schema-a.xsd", "Substitute/schema-b.xsd");
   }
 
   public void testEnumeratedTagValue() throws Exception {

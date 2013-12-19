@@ -15,7 +15,7 @@
  */
 package org.jetbrains.plugins.groovy.refactoring.introduce.constant;
 
-import com.intellij.openapi.editor.RangeMarker;
+import com.intellij.openapi.util.Ref;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.refactoring.HelpID;
@@ -27,16 +27,11 @@ import org.jetbrains.plugins.groovy.lang.psi.GroovyRecursiveElementVisitor;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.GrField;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.GrVariable;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.blocks.GrClosableBlock;
-import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrBinaryExpression;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrExpression;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrReferenceExpression;
 import org.jetbrains.plugins.groovy.refactoring.GrRefactoringError;
 import org.jetbrains.plugins.groovy.refactoring.GroovyRefactoringBundle;
 import org.jetbrains.plugins.groovy.refactoring.introduce.*;
-import org.jetbrains.plugins.groovy.refactoring.introduce.field.GrFieldNameSuggester;
-import org.jetbrains.plugins.groovy.refactoring.introduce.field.GroovyInplaceFieldValidator;
-
-import java.util.List;
 
 /**
  * @author Maxim.Medvedev
@@ -99,65 +94,14 @@ public class GrIntroduceConstantHandler extends GrIntroduceFieldHandlerBase<GrIn
   }
 
   @Override
-  protected GrInplaceIntroducer getIntroducer(@NotNull final GrVariable var,
-                                              @NotNull GrIntroduceContext context,
-                                              @NotNull GrIntroduceConstantSettings settings,
-                                              @NotNull List<RangeMarker> occurrenceMarkers,
-                                              RangeMarker varRangeMarker, RangeMarker expressionRangeMarker,
-                                              RangeMarker stringPartRangeMarker) {
-    if (varRangeMarker != null) {
-      context.getEditor().getCaretModel().moveToOffset(var.getNameIdentifierGroovy().getTextRange().getStartOffset());
-    }
-    else if (expressionRangeMarker != null) {
-      context.getEditor().getCaretModel().moveToOffset(expressionRangeMarker.getStartOffset());
-    }
-    else if (stringPartRangeMarker != null) {
-      int offset = stringPartRangeMarker.getStartOffset();
-      PsiElement at = var.getContainingFile().findElementAt(offset);
-      GrExpression ref = PsiTreeUtil.getParentOfType(at, GrBinaryExpression.class).getRightOperand();
-      context.getEditor().getCaretModel().moveToOffset(ref.getTextRange().getStartOffset());
+  protected GrAbstractInplaceIntroducer<GrIntroduceConstantSettings> getIntroducer(@NotNull GrIntroduceContext context, @NotNull OccurrencesChooser.ReplaceChoice choice) {
+    final Ref<GrIntroduceContext> contextRef = Ref.create(context);
+
+    if (context.getStringPart() != null) {
+      extractStringPart(contextRef);
     }
 
-    return new GrInplaceConstantIntroducer(var, context, occurrenceMarkers, settings.replaceAllOccurrences(), expressionRangeMarker, stringPartRangeMarker);
-  }
-
-  @Override
-  protected GrIntroduceConstantSettings getSettingsForInplace(final GrIntroduceContext context, final OccurrencesChooser.ReplaceChoice choice) {
-    return new GrIntroduceConstantSettings() {
-      @Override
-      public String getVisibilityModifier() {
-        return PsiModifier.PUBLIC;
-      }
-
-      @Nullable
-      @Override
-      public PsiClass getTargetClass() {
-        return (PsiClass)context.getScope();
-      }
-
-      @Nullable
-      @Override
-      public String getName() {
-        return new GrFieldNameSuggester(context, new GroovyInplaceFieldValidator(context), false).suggestNames().iterator().next();
-      }
-
-      @Override
-      public boolean replaceAllOccurrences() {
-        return choice == OccurrencesChooser.ReplaceChoice.ALL;
-      }
-
-      @Nullable
-      @Override
-      public PsiType getSelectedType() {
-        GrExpression expression = context.getExpression();
-        GrVariable var = context.getVar();
-        StringPartInfo stringPart = context.getStringPart();
-        return var != null ? var.getDeclaredType() :
-               expression != null ? expression.getType() :
-               stringPart != null ? stringPart.getLiteral().getType() :
-               null;
-      }
-    };
+    return new GrInplaceConstantIntroducer(contextRef.get(), choice);
   }
 
   private static class ConstantChecker extends GroovyRecursiveElementVisitor {

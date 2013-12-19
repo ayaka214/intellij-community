@@ -23,14 +23,12 @@ import java.util.*;
  * User: anna
  */
 public class InferenceVariable {
-  private boolean myCaptured;
-
   public PsiTypeParameter getParameter() {
     return myParameter;
   }
 
-  private Map<InferenceBound, List<PsiType>> myBounds = new HashMap<InferenceBound, List<PsiType>>();
-  private PsiTypeParameter myParameter;
+  private final Map<InferenceBound, List<PsiType>> myBounds = new HashMap<InferenceBound, List<PsiType>>();
+  private final PsiTypeParameter myParameter;
 
   private PsiType myInstantiation = PsiType.NULL;
   public InferenceVariable(PsiTypeParameter parameter) {
@@ -46,14 +44,6 @@ public class InferenceVariable {
   
   public void ignoreInstantiation() {
     myInstantiation = PsiType.NULL;
-  }
-
-  public boolean isCaptured() {
-    return myCaptured;
-  }
-
-  public void setCaptured(boolean captured) {
-    myCaptured = captured;
   }
 
   public boolean addBound(PsiType classType, InferenceBound inferenceBound) {
@@ -76,10 +66,10 @@ public class InferenceVariable {
   }
 
   public Set<InferenceVariable> getDependencies(InferenceSession session) {
-    final HashSet<InferenceVariable> dependencies = new HashSet<InferenceVariable>();
+    final Set<InferenceVariable> dependencies = new LinkedHashSet<InferenceVariable>();
     for (InferenceBound inferenceBound : InferenceBound.values()) {
       for (PsiType bound : getBounds(inferenceBound)) {
-        session.collectDependencies(bound, dependencies, true);
+        session.collectDependencies(bound, dependencies);
       }
     }
     return dependencies;

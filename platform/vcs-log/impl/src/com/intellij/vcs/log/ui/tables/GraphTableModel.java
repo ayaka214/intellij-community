@@ -5,12 +5,11 @@ import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.vcs.changes.Change;
 import com.intellij.openapi.vcs.changes.committed.CommittedChangesTreeBrowser;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.vcs.log.Hash;
 import com.intellij.vcs.log.VcsFullCommitDetails;
 import com.intellij.vcs.log.VcsRef;
 import com.intellij.vcs.log.VcsShortCommitDetails;
-import com.intellij.vcs.log.data.DataPack;
-import com.intellij.vcs.log.data.LoadingDetails;
-import com.intellij.vcs.log.data.VcsLogDataHolder;
+import com.intellij.vcs.log.data.*;
 import com.intellij.vcs.log.graph.elements.Node;
 import com.intellij.vcs.log.graph.render.GraphCommitCell;
 import com.intellij.vcs.log.graph.render.PositionUtil;
@@ -27,18 +26,20 @@ import java.util.List;
 /**
  * @author Kirill Likhodedov
  */
-public class GraphTableModel extends AbstractVcsLogTableModel<GraphCommitCell> {
+public class GraphTableModel extends AbstractVcsLogTableModel<GraphCommitCell, Node> {
 
   private static final Logger LOG = Logger.getInstance(GraphTableModel.class);
 
   @NotNull private final DataPack myDataPack;
   @NotNull private final VcsLogDataHolder myDataHolder;
   @NotNull private final VcsLogUI myUi;
+  @NotNull private final NodeAroundProvider myNodeAroundProvider;
 
   public GraphTableModel(@NotNull VcsLogDataHolder dataHolder, @NotNull VcsLogUI ui) {
     myDataHolder = dataHolder;
     myUi = ui;
     myDataPack = dataHolder.getDataPack();
+    myNodeAroundProvider = new NodeAroundProvider(myDataPack, dataHolder);
   }
 
   @Override
@@ -50,7 +51,14 @@ public class GraphTableModel extends AbstractVcsLogTableModel<GraphCommitCell> {
   @Override
   protected VcsShortCommitDetails getShortDetails(int rowIndex) {
     Node commitNode = myDataPack.getGraphModel().getGraph().getCommitNodeInRow(rowIndex);
-    return commitNode == null ? null : myDataHolder.getMiniDetailsGetter().getCommitData(commitNode);
+    return commitNode == null ? null : myDataHolder.getMiniDetailsGetter().getCommitData(commitNode, myNodeAroundProvider);
+  }
+
+  @Nullable
+  @Override
+  public VcsFullCommitDetails getFullCommitDetails(int row) {
+    Node node = myDataPack.getGraphModel().getGraph().getCommitNodeInRow(row);
+    return node == null ? null : myDataHolder.getCommitDetailsGetter().getCommitData(node, myNodeAroundProvider);
   }
 
   @Override
@@ -63,7 +71,7 @@ public class GraphTableModel extends AbstractVcsLogTableModel<GraphCommitCell> {
   public List<Change> getSelectedChanges(int[] selectedRows) {
     List<Change> changes = new ArrayList<Change>();
     for (Node node : nodes(selectedRows)) {
-      VcsFullCommitDetails commitData = myDataHolder.getCommitDetailsGetter().getCommitData(node);
+      VcsFullCommitDetails commitData = myDataHolder.getCommitDetailsGetter().getCommitData(node, myNodeAroundProvider);
       if (commitData instanceof LoadingDetails) {
         return null;
       }
@@ -99,13 +107,7 @@ public class GraphTableModel extends AbstractVcsLogTableModel<GraphCommitCell> {
   @Override
   protected VirtualFile getRoot(int rowIndex) {
     Node commitNode = myDataPack.getGraphModel().getGraph().getCommitNodeInRow(rowIndex);
-    if (commitNode != null) {
-      return commitNode.getBranch().getRepositoryRoot();
-    }
-    else {
-      LOG.error("Couldn't identify commit node at " + rowIndex);
-      return UNKNOWN_ROOT;
-    }
+    return commitNode != null ? commitNode.getBranch().getRepositoryRoot() : FAKE_ROOT;
   }
 
   @NotNull
@@ -114,7 +116,9 @@ public class GraphTableModel extends AbstractVcsLogTableModel<GraphCommitCell> {
     GraphPrintCell graphPrintCell = myDataPack.getPrintCellModel().getGraphPrintCell(rowIndex);
     String message = "";
     List<VcsRef> refs = Collections.emptyList();
+    Hash hash = null;
     if (details != null) {
+      hash = details.getHash();
       message = details.getSubject();
       refs = (List<VcsRef>)myDataPack.getRefsModel().refsToCommit(details.getHash());
     }
@@ -126,4 +130,19 @@ public class GraphTableModel extends AbstractVcsLogTableModel<GraphCommitCell> {
   protected Class<GraphCommitCell> getCommitColumnClass() {
     return GraphCommitCell.class;
   }
+
+  @Nullable
+  @Override
+  public Hash getHashAtRow(int row) {
+    Node node = myDataPack.getGraphModel().getGraph().getCommitNodeInRow(row);
+    return node == null ? null : myDataHolder.getHash(node.getCommitIndex());
+    
+  }
+
+  @NotNull
+  @Override
+  public AroundProvider<Node> getAroundProvider() {
+    return myNodeAroundProvider;
+  }
+
 }

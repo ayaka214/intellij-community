@@ -37,11 +37,12 @@ public interface ExternalSystemTaskManager<S extends ExternalSystemExecutionSett
                     @NotNull String projectPath,
                     @Nullable S settings,
                     @Nullable String vmOptions,
+                    @Nullable String scriptParameters,
                     @Nullable String debuggerSetup,
                     @NotNull ExternalSystemTaskNotificationListener listener)
     throws ExternalSystemException;
 
-  void cancelTask(@NotNull ExternalSystemTaskId id,
+  boolean cancelTask(@NotNull ExternalSystemTaskId id,
                   @NotNull ExternalSystemTaskNotificationListener listener)
     throws ExternalSystemException;
 }
